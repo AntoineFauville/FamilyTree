@@ -95,6 +95,7 @@ export function createTreeView(svg, { onSelect }) {
       g.classList.toggle('selected', c.pid === opts.selected);
       g.classList.toggle('partner', c.partner);
       g.classList.toggle('deceased', opts.deceased(c.pid));
+      g.classList.toggle('dim', !!(opts.dim && opts.dim(c.pid)));
       g.replaceChildren();
 
       const lines = opts.lines(c.pid);

@@ -64,9 +64,10 @@ export function age(p, today = new Date()) {
   return a;
 }
 
-// Next birthday for living people with a full birth date: { date, days, turns }.
-export function nextBirthday(p, today = new Date()) {
-  if (p.deceased || p.death) return null;
+// Next birthday for people with a full birth date: { date, days, turns }.
+// People who have died are included only when asked (for "would have been N").
+export function nextBirthday(p, today = new Date(), { includeDeceased = false } = {}) {
+  if ((p.deceased || p.death) && !includeDeceased) return null;
   const b = parseDate(p.birth);
   if (!b || !b.m || !b.d) return null;
   const t = startOfDay(today);

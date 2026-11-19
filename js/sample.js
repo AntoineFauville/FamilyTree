@@ -1,4 +1,5 @@
 // Fictional demo family. Nothing here is real.
+// Last names are birth names (the name each person was born with).
 
 const P = (id, en, ka, fr, gender, birth, death = '', extra = {}) =>
   ({ id, name: { en, ka, fr }, gender, birth, death, parents: [], partners: [], ...extra });
@@ -7,9 +8,9 @@ export function sampleFamily() {
   const people = [
     // Paternal side (Beridze)
     P('ilia', 'Ilia Beridze', 'ილია ბერიძე', 'Ilia Béridzé', 'm', '1905-03-14', '1980-10-02'),
-    P('keti', 'Ketevan Beridze', 'ქეთევან ბერიძე', 'Kétévan Béridzé', 'f', '1908-07-22', '1985-01-11'),
+    P('keti', 'Ketevan Abashidze', 'ქეთევან აბაშიძე', 'Kétévan Abachidzé', 'f', '1908-07-22', '1985-01-11'),
     P('levan', 'Levan Beridze', 'ლევან ბერიძე', 'Lévan Béridzé', 'm', '1932-11-27', '2001-05-30'),
-    P('nino', 'Nino Beridze', 'ნინო ბერიძე', 'Nino Béridzé', 'f', '1935-12-04', '2015-08-19'),
+    P('nino', 'Nino Tsereteli', 'ნინო წერეთელი', 'Nino Tsérétéli', 'f', '1935-12-04', '2015-08-19'),
     P('davit', 'Davit Beridze', 'დავით ბერიძე', 'Davit Béridzé', 'm', '1958-06-09'),
     P('tamar', 'Tamar Kapanadze', 'თამარ კაპანაძე', 'Tamar Kapanadzé', 'f', '1960-02-17'),
     P('giorgi', 'Giorgi Beridze', 'გიორგი ბერიძე', 'Guiorgui Béridzé', 'm', '1961-11-23'),
@@ -22,7 +23,7 @@ export function sampleFamily() {
 
     // Maternal side (Martin)
     P('jean', 'Jean Martin', 'ჟან მარტენი', 'Jean Martin', 'm', '1935-05-05', '2010-03-03'),
-    P('marie', 'Marie Martin', 'მარი მარტენი', 'Marie Martin', 'f', '1940-12-21'),
+    P('marie', 'Marie Dupont', 'მარი დიუპონი', 'Marie Dupont', 'f', '1940-12-21'),
     P('claire', 'Claire Martin', 'კლერ მარტენი', 'Claire Martin', 'f', '1964-08-18'),
 
     // You, your sibling, your partner and child
@@ -33,10 +34,10 @@ export function sampleFamily() {
 
     // Partner's side (Lefevre)
     P('bernard', 'Bernard Lefevre', 'ბერნარ ლეფევრი', 'Bernard Lefèvre', 'm', '1938-02-08', '2019-09-14'),
-    P('jacqueline', 'Jacqueline Lefevre', 'ჟაკლინ ლეფევრი', 'Jacqueline Lefèvre', 'f', '1941-10-10'),
+    P('jacqueline', 'Jacqueline Moreau', 'ჟაკლინ მორო', 'Jacqueline Moreau', 'f', '1941-10-10'),
     P('paul', 'Paul Lefevre', 'პოლ ლეფევრი', 'Paul Lefèvre', 'm', '1964-01-19'),
-    P('isabelle', 'Isabelle Lefevre', 'იზაბელ ლეფევრი', 'Isabelle Lefèvre', 'f', '1966-12-15'),
-    P('anne', 'Anne Roux', 'ან რუ', 'Anne Roux', 'f', '1968-05-28'),
+    P('isabelle', 'Isabelle Girard', 'იზაბელ ჟირარი', 'Isabelle Girard', 'f', '1966-12-15'),
+    P('anne', 'Anne Lefevre', 'ან ლეფევრი', 'Anne Lefèvre', 'f', '1968-05-28'),
     P('marc', 'Marc Roux', 'მარკ რუ', 'Marc Roux', 'm', '1965-11-30'),
     P('thomas', 'Thomas Lefevre', 'ტომა ლეფევრი', 'Thomas Lefèvre', 'm', '1997-08-07'),
     P('julien', 'Julien Roux', 'ჟულიენ რუ', 'Julien Roux', 'm', '1995-11-21'),

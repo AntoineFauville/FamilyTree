@@ -35,7 +35,7 @@
     <div id="lockPass" hidden>
       <p class="muted" data-i18n="lockHint"></p>
       <form id="passForm" class="row">
-        <input id="passInput" type="password" autocomplete="current-password" data-i18n-placeholder="passphrase" required>
+        <input id="passInput" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" data-i18n-placeholder="passphrase" required>
         <button class="primary" data-i18n="open"></button>
       </form>
       <p id="passError" class="error" hidden></p>
@@ -82,6 +82,15 @@
     </section>
 
     <section>
+      <h2 data-i18n="familyFilter"></h2>
+      <select id="familySelect"></select>
+      <div id="familyPanel" hidden>
+        <button id="btnFamilyTree" class="primary wide" data-i18n="showFamilyTree"></button>
+        <div id="familyMembers" class="chips"></div>
+      </div>
+    </section>
+
+    <section>
       <h2 data-i18n="namesIn"></h2>
       <label class="toggle"><input type="checkbox" data-name-lang="en"><span data-i18n="langEn"></span></label>
       <label class="toggle"><input type="checkbox" data-name-lang="ka"><span data-i18n="langKa"></span></label>
@@ -105,6 +114,7 @@
 
     <section>
       <h2 data-i18n="birthdays"></h2>
+      <label class="toggle"><input type="checkbox" id="bdayDeceased"><span data-i18n="showDeceased"></span></label>
       <ol id="birthdayList" class="bday-list"></ol>
     </section>
 
@@ -114,7 +124,7 @@
       <div id="editTools" class="stack" hidden>
         <button id="btnAdd" data-i18n="addPerson"></button>
         <button id="btnSave" class="primary" data-i18n="saveFile"></button>
-        <button id="btnPass" data-i18n="changePass"></button>
+        <button id="btnKeys" data-i18n="accessKeys"></button>
         <button id="btnExport" data-i18n="exportJson"></button>
       </div>
       <div class="stack">
@@ -143,18 +153,21 @@
   <aside id="details" hidden></aside>
 </div>
 
-<dialog id="passDialog">
-  <form method="dialog" id="passDialogForm">
-    <h2 data-i18n="setPassTitle"></h2>
-    <p class="muted" data-i18n="setPassHint"></p>
-    <input id="newPass1" type="password" autocomplete="new-password" data-i18n-placeholder="passphrase">
-    <input id="newPass2" type="password" autocomplete="new-password" data-i18n-placeholder="repeatPass">
-    <p id="newPassError" class="error" hidden></p>
-    <div class="row end">
-      <button type="button" id="newPassCancel" data-i18n="cancel"></button>
-      <button type="submit" class="primary" data-i18n="save"></button>
-    </div>
+<!-- Access keys: each key opens the same tree -->
+<dialog id="keysDialog">
+  <h2 data-i18n="accessKeys"></h2>
+  <p class="muted" data-i18n="keysHint"></p>
+  <ul id="keyList" class="key-list"></ul>
+  <form id="keyAddForm" class="key-add">
+    <input id="keyLabel" maxlength="40" data-i18n-placeholder="keyLabelPh" autocomplete="off">
+    <input id="keyValue" data-i18n-placeholder="keyValuePh" autocomplete="off" autocapitalize="off" spellcheck="false">
+    <button class="primary" data-i18n="addKey"></button>
   </form>
+  <p id="keyError" class="error" hidden></p>
+  <p class="muted small" data-i18n="keysWarning"></p>
+  <div class="row end">
+    <button type="button" id="keysDone" data-i18n="done"></button>
+  </div>
 </dialog>
 
 <div id="toast" role="status" aria-live="polite"></div>

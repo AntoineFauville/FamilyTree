@@ -38,7 +38,7 @@ function renderView(box, p, ctx) {
 
   box.innerHTML = `
     <div class="d-head">
-      <div class="d-names">${nameLines(p, { en: 1, ka: 1, fr: 1 }).map((n) => `<div>${esc(n)}</div>`).join('')}</div>
+      <div class="d-names">${nameLines(p, { en: 1, ka: 1, fr: 1 }).map((n, i) => `<div>${i === 0 && p.deceased ? '† ' : ''}${esc(n)}</div>`).join('')}</div>
       <button class="d-close" data-act="close" title="${esc(t('close'))}">×</button>
     </div>
     <div class="d-dates">${dates}</div>
@@ -98,8 +98,13 @@ function renderForm(box, p, ctx) {
     </div>
     <div class="d-form">
       ${NAME_LANGS.map((l) => `
-        <label class="field"><span>${esc(t('name' + l[0].toUpperCase() + l[1]))}</span>
-          <input data-name="${l}" value="${esc(p.name[l])}" ${l === 'ka' ? 'lang="ka"' : ''}></label>`).join('')}
+        <div class="name-lang">${esc(t('lang' + l[0].toUpperCase() + l[1]))}</div>
+        <div class="two">
+          <label class="field"><span>${esc(t('firstName'))}</span>
+            <input data-first="${l}" value="${esc(p.first[l])}" ${l === 'ka' ? 'lang="ka"' : ''}></label>
+          <label class="field"><span>${esc(t('lastName'))}</span>
+            <input data-last="${l}" value="${esc(p.last[l])}" ${l === 'ka' ? 'lang="ka"' : ''}></label>
+        </div>`).join('')}
       <label class="field"><span>${esc(t('gender'))}</span>
         <select data-field="gender">
           <option value="">${esc(t('unknown'))}</option>
@@ -128,7 +133,8 @@ function renderForm(box, p, ctx) {
 
   box.oninput = (e) => {
     const tg = e.target;
-    if (tg.dataset.name) { p.name[tg.dataset.name] = tg.value; ctx.changed({ soft: true }); }
+    if (tg.dataset.first) { p.first[tg.dataset.first] = tg.value; ctx.changed({ soft: true }); }
+    else if (tg.dataset.last) { p.last[tg.dataset.last] = tg.value; ctx.changed({ soft: true }); }
     else if (tg.dataset.field === 'notes') { p.notes = tg.value; ctx.changed({ soft: true }); }
     else if (tg.dataset.date) {
       const v = tg.value.trim();
@@ -155,7 +161,11 @@ function renderForm(box, p, ctx) {
       let target = tg.value;
       if (!target) return;
       let created = null;
-      if (target === '__new') { created = fam.add(); target = created.id; }
+      if (target === '__new') {
+        // A new child starts with this person's last names; easy to change afterwards.
+        created = fam.add(kind === 'children' ? { last: { ...p.last } } : {});
+        target = created.id;
+      }
       let ok = true;
       if (kind === 'parents') ok = fam.addParent(p.id, target);
       if (kind === 'children') ok = fam.addParent(target, p.id);

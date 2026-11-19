@@ -1,6 +1,6 @@
 // Family data model.
-// A person: { id, name: {en, ka, fr}, gender: 'm'|'f'|'', birth, death, deceased, notes,
-//             parents: [id, id], partners: [id, ...] }
+// A person: { id, first: {en, ka, fr}, last: {en, ka, fr}, gender: 'm'|'f'|'',
+//             birth, death, deceased, notes, parents: [id, id], partners: [id, ...] }
 // Dates are strings: 'YYYY-MM-DD', 'YYYY-MM' or 'YYYY'.
 
 import { compareBirth } from './dates.js';
@@ -12,11 +12,28 @@ export function newId() {
   return 'p' + Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
 }
 
+// Older files stored one full name per language ("Levan Beridze"):
+// the last word becomes the last name, the rest the first name.
+function splitFullName(full) {
+  const parts = (full || '').trim().split(/\s+/).filter(Boolean);
+  if (parts.length < 2) return { first: parts[0] || '', last: '' };
+  return { first: parts.slice(0, -1).join(' '), last: parts[parts.length - 1] };
+}
+
 export function normalizePerson(p) {
-  const name = p.name || {};
+  const first = {}, last = {};
+  for (const l of NAME_LANGS) {
+    if (p.first || p.last) {
+      first[l] = (p.first && p.first[l]) || '';
+      last[l] = (p.last && p.last[l]) || '';
+    } else {
+      ({ first: first[l], last: last[l] } = splitFullName(p.name && p.name[l]));
+    }
+  }
   return {
     id: p.id || newId(),
-    name: { en: name.en || '', ka: name.ka || '', fr: name.fr || '' },
+    first,
+    last,
     gender: p.gender === 'm' || p.gender === 'f' ? p.gender : '',
     birth: p.birth || '',
     death: p.death || '',
@@ -126,20 +143,74 @@ export class Family {
 
 // Names to show, in the order en / ka / fr, for the enabled languages.
 // Identical names are shown once. Falls back to any name if none of the enabled ones exist.
-export function nameLines(p, langs) {
+export function fullName(p, lang) {
+  return [p.first[lang], p.last[lang]].map((s) => (s || '').trim()).filter(Boolean).join(' ');
+}
+
+// Picks one value per enabled language (en / ka / fr order), drops repeats,
+// and falls back to any language if none of the enabled ones has a value.
+function pick(langs, get) {
   const out = [];
   for (const l of NAME_LANGS) {
     if (!langs[l]) continue;
-    const n = (p.name[l] || '').trim();
-    if (n && !out.includes(n)) out.push(n);
+    const v = get(l);
+    if (v && !out.includes(v)) out.push(v);
   }
   if (!out.length) {
-    const any = NAME_LANGS.map((l) => (p.name[l] || '').trim()).find(Boolean);
-    out.push(any || '?');
+    const any = NAME_LANGS.map(get).find(Boolean);
+    if (any) out.push(any);
   }
   return out;
 }
 
+export function nameLines(p, langs) {
+  const out = pick(langs, (l) => fullName(p, l));
+  return out.length ? out : ['?'];
+}
+
 export function displayName(p, langs) {
   return nameLines(p, langs).join(' / ');
+}
+
+// ---- Family names (last names), for the family filter
+
+// Same family whatever the spelling details: "Béridzé" and "beridze" match.
+const fold = (s) => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase();
+
+// Grouping key: the last name in the first language that has one (en, then ka, then fr).
+export function familyKey(p) {
+  const l = NAME_LANGS.find((x) => (p.last[x] || '').trim());
+  return l ? fold(p.last[l]) : '';
+}
+
+export function lastNameLabel(p, langs) {
+  return pick(langs, (l) => (p.last[l] || '').trim()).join(' / ');
+}
+
+// [{ key, label, members: [person] }] sorted by label.
+export function familyGroups(fam, langs) {
+  const groups = new Map();
+  for (const p of fam.people) {
+    const key = familyKey(p);
+    if (!key) continue;
+    if (!groups.has(key)) groups.set(key, { key, label: lastNameLabel(p, langs), members: [] });
+    groups.get(key).members.push(p);
+  }
+  for (const g of groups.values()) g.members.sort(compareBirth);
+  return [...groups.values()].sort((a, b) => a.label.localeCompare(b.label));
+}
+
+// The person to start a family's tree from: the eldest member whose parents are not in that family.
+export function familyHead(fam, key) {
+  const members = fam.people.filter((p) => familyKey(p) === key).sort(compareBirth);
+  const heads = members.filter((p) => !p.parents.some((id) => fam.get(id) && familyKey(fam.get(id)) === key));
+  return (heads[0] || members[0] || null);
+}
+
+// Number of generations below a person (1 = no children).
+export function generationsBelow(fam, id, seen = new Set()) {
+  if (seen.has(id)) return 0;
+  seen.add(id);
+  const kids = fam.childrenOf(id);
+  return 1 + (kids.length ? Math.max(...kids.map((k) => generationsBelow(fam, k.id, seen))) : 0);
 }

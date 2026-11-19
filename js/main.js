@@ -1,7 +1,7 @@
 import { t, setLangs, getLang, getLangs, UI_LANGS } from './i18n.js';
-import { Family, nameLines, displayName } from './model.js';
+import { Family, nameLines, displayName, familyGroups, familyKey, familyHead, generationsBelow } from './model.js';
 import { yearsLabel, nextBirthday, formatDayMonth } from './dates.js';
-import { encryptJson, decryptJson, isEncryptedFile } from './crypto.js';
+import { openFile, sealFile, createVault, addKey, removeKey, isEncryptedFile, MIN_KEY_LENGTH } from './crypto.js';
 import { buildDescendants, buildAncestors, layoutTree, layoutFamily, cardHeight } from './layout.js';
 import { createTreeView } from './render.js';
 import { renderDetails } from './details.js';
@@ -14,14 +14,17 @@ const DATA_URL = 'data/family.enc.json';
 
 const state = {
   fam: null,
-  pass: null,        // passphrase used to open/save the encrypted file (kept in memory only)
-  encFile: null,     // encrypted file waiting for a passphrase
+  encFile: null,     // encrypted file waiting for a key
+  vault: null,       // data key + locked copies of it, one per access key (memory only)
+  keyLabels: {},     // slot id -> name ("Beridze side"); saved inside the encrypted data
+  known: {},         // slot id -> key as typed, for keys known in this session (to build links)
+  pass: null,        // key used to open the tree (for the share link)
   dirty: false,
   demo: false,
   editMode: false,
   editing: false,
   selected: null,
-  s: { uiLangs: [guessLang()], theme: 'auto', langs: { en: true, ka: false, fr: false }, mode: 'anc', gens: 4, root: null },
+  s: { uiLangs: [guessLang()], theme: 'auto', langs: { en: true, ka: false, fr: false }, mode: 'anc', gens: 4, root: null, family: '' },
 };
 
 function guessLang() {
@@ -77,8 +80,8 @@ async function tryUnlock(pass) {
   $('#passError').hidden = true;
   $('#passBusy').hidden = false;
   try {
-    const data = await decryptJson(state.encFile, pass);
-    openFamily(data, { pass });
+    const { vault, data, slotId } = await openFile(state.encFile, pass);
+    openFamily(data, { vault, slotId, pass });
   } catch {
     $('#passError').textContent = t('wrongPass');
     $('#passError').hidden = false;
@@ -116,8 +119,11 @@ async function boot() {
   }
 }
 
-function openFamily(data, { pass = null, demo = false, edit = false } = {}) {
+function openFamily(data, { vault = null, slotId = null, pass = null, demo = false, edit = false } = {}) {
   state.fam = new Family(data);
+  state.vault = vault || createVault();
+  state.keyLabels = { ...(data.keyLabels || {}) };
+  state.known = slotId ? { [slotId]: pass } : {};
   state.pass = pass;
   state.demo = demo;
   state.dirty = false;
@@ -160,9 +166,41 @@ function refresh({ fit = false } = {}) {
   $('#demoBadge').hidden = !state.demo;
   $('#dirtyBadge').hidden = !state.dirty;
 
+  drawFamilyFilter();
   drawTree(fit);
   drawBirthdays();
   drawDetails();
+}
+
+// Family filter: pick a last name to highlight that family and list its members.
+function drawFamilyFilter() {
+  const { fam, s } = state;
+  const groups = familyGroups(fam, nameOpts());
+  if (s.family && !groups.some((g) => g.key === s.family)) s.family = '';
+  const sel = $('#familySelect');
+  sel.innerHTML = '';
+  sel.add(new Option(t('allFamilies'), ''));
+  for (const g of groups) sel.add(new Option(`${g.label} (${g.members.length})`, g.key));
+  sel.value = s.family || '';
+
+  const group = groups.find((g) => g.key === s.family);
+  $('#familyPanel').hidden = !group;
+  const box = $('#familyMembers');
+  box.innerHTML = '';
+  if (!group) return;
+  for (const p of group.members) {
+    const chip = document.createElement('span');
+    chip.className = 'chip';
+    chip.classList.toggle('on', p.id === state.selected);
+    chip.dataset.pid = p.id;
+    chip.textContent = displayName(p, nameOpts());
+    box.appendChild(chip);
+  }
+}
+
+function inFamily(pid) {
+  const p = state.fam.get(pid);
+  return !!p && familyKey(p) === state.s.family;
 }
 
 function drawTree(fit) {
@@ -180,17 +218,26 @@ function drawTree(fit) {
     cardH,
     rootId: s.root,
     selected: state.selected,
-    lines: (pid) => { const p = fam.get(pid); return p ? nameLines(p, langs) : ['?']; },
+    lines: (pid) => {
+      const p = fam.get(pid);
+      if (!p) return ['?'];
+      const lines = nameLines(p, langs);
+      if (p.deceased) lines[0] = `† ${lines[0]}`; // cross before the name of people who have died
+      return lines;
+    },
     years: (pid) => { const p = fam.get(pid); return p ? yearsLabel(p) : ''; },
     deceased: (pid) => !!fam.get(pid)?.deceased,
+    dim: (pid) => !!s.family && !inFamily(pid),
   });
   if (fit) requestAnimationFrame(() => treeView.fit(true));
 }
 
 function drawBirthdays() {
   const list = $('#birthdayList');
+  const includeDeceased = !!state.s.bdayDeceased;
+  $('#bdayDeceased').checked = includeDeceased;
   const items = state.fam.people
-    .map((p) => ({ p, nb: nextBirthday(p) }))
+    .map((p) => ({ p, nb: nextBirthday(p, new Date(), { includeDeceased }) }))
     .filter((x) => x.nb)
     .sort((a, b) => a.nb.days - b.nb.days)
     .slice(0, 8);
@@ -203,12 +250,14 @@ function drawBirthdays() {
     const li = document.createElement('li');
     li.dataset.pid = p.id;
     li.classList.toggle('soon', nb.days <= 7);
+    li.classList.toggle('deceased', !!p.deceased);
     const when = nb.days === 0 ? t('today') : nb.days === 1 ? t('tomorrow') : t('inDays', { n: nb.days });
     const name = document.createElement('span');
-    name.textContent = displayName(p, nameOpts());
+    name.textContent = `${p.deceased ? '† ' : ''}${displayName(p, nameOpts())}`;
     const w = document.createElement('span');
     w.className = 'when';
-    w.innerHTML = `${when}<br>${formatDayMonth(nb.date, getLang())} · ${t('turns', { n: nb.turns })}`;
+    const age = p.deceased ? t('wouldHaveBeen', { n: nb.turns }) : t('turns', { n: nb.turns });
+    w.innerHTML = `${when}<br>${formatDayMonth(nb.date, getLang())} · ${age}`;
     li.append(name, w);
     list.appendChild(li);
   }
@@ -249,6 +298,7 @@ function changed({ soft = false } = {}) {
   $('#dirtyBadge').hidden = false;
   if (soft) {
     // Typing in the form: redraw tree and lists but keep the form (and its focus) as is.
+    drawFamilyFilter();
     drawTree(false);
     drawBirthdays();
   } else {
@@ -258,61 +308,110 @@ function changed({ soft = false } = {}) {
 
 // ---------------------------------------------------------------- Saving & sharing
 
-function askPassphrase() {
-  const dlg = $('#passDialog');
-  const p1 = $('#newPass1'), p2 = $('#newPass2'), err = $('#newPassError');
-  p1.value = p2.value = '';
-  err.hidden = true;
-  dlg.showModal();
-  p1.focus();
-  return new Promise((resolve) => {
-    const finish = (v) => {
-      dlg.close();
-      $('#passDialogForm').onsubmit = null;
-      $('#newPassCancel').onclick = null;
-      dlg.oncancel = null;
-      resolve(v);
+const shareLink = (key) => `${location.origin}${location.pathname}#k=${encodeURIComponent(key)}`;
+
+async function copyText(text, okMsg) {
+  try {
+    await navigator.clipboard.writeText(text);
+    toast(okMsg);
+  } catch {
+    prompt(t('copyLink'), text);
+  }
+}
+
+// ---- Access keys dialog: list, add and remove the keys that open the tree.
+
+function keyName(id, i) {
+  return state.keyLabels[id] || t('keyN', { n: i + 1 });
+}
+
+function drawKeyList() {
+  const list = $('#keyList');
+  list.innerHTML = '';
+  state.vault.slots.forEach((slot, i) => {
+    const li = document.createElement('li');
+    const name = document.createElement('span');
+    name.className = 'k-name';
+    name.textContent = keyName(slot.id, i);
+    li.appendChild(name);
+    if (state.known[slot.id]) {
+      const copy = document.createElement('button');
+      copy.type = 'button';
+      copy.textContent = t('copyKeyLink');
+      copy.onclick = () => copyText(shareLink(state.known[slot.id]), t('linkCopied'));
+      li.appendChild(copy);
+    } else {
+      const hint = document.createElement('span');
+      hint.className = 'k-link';
+      hint.textContent = t('keyLinkUnknown');
+      li.appendChild(hint);
+    }
+    const rm = document.createElement('button');
+    rm.type = 'button';
+    rm.className = 'danger';
+    rm.textContent = '×';
+    rm.title = t('remove');
+    rm.onclick = () => {
+      if (state.vault.slots.length === 1) { showKeyError(t('lastKey')); return; }
+      if (!confirm(t('confirmRemoveKey', { name: keyName(slot.id, i) }))) return;
+      removeKey(state.vault, slot.id);
+      delete state.keyLabels[slot.id];
+      delete state.known[slot.id];
+      changed();
+      drawKeyList();
     };
-    $('#passDialogForm').onsubmit = (e) => {
-      e.preventDefault();
-      if (p1.value.length < 12) { err.textContent = t('passTooShort'); err.hidden = false; return; }
-      if (p1.value !== p2.value) { err.textContent = t('passMismatch'); err.hidden = false; return; }
-      finish(p1.value);
-    };
-    $('#newPassCancel').onclick = () => finish(null);
-    dlg.oncancel = () => finish(null);
+    li.appendChild(rm);
+    list.appendChild(li);
   });
 }
 
+function showKeyError(msg) {
+  $('#keyError').textContent = msg;
+  $('#keyError').hidden = !msg;
+}
+
+function openKeys() {
+  showKeyError('');
+  $('#keyLabel').value = '';
+  $('#keyValue').value = '';
+  drawKeyList();
+  $('#keysDialog').showModal();
+  (state.vault.slots.length ? $('#keysDone') : $('#keyLabel')).focus();
+}
+
+async function onAddKey(e) {
+  e.preventDefault();
+  const key = $('#keyValue').value.trim();
+  if (key.length < MIN_KEY_LENGTH) { showKeyError(t('keyTooShort')); $('#keyValue').focus(); return; }
+  showKeyError('');
+  const id = await addKey(state.vault, key);
+  const label = $('#keyLabel').value.trim();
+  if (label) state.keyLabels[id] = label;
+  state.known[id] = key;
+  if (!state.pass) state.pass = key;
+  $('#keyLabel').value = '';
+  $('#keyValue').value = '';
+  changed();
+  drawKeyList();
+  $('#keyLabel').focus();
+}
+
+// ---- Saving & sharing
+
 async function saveEncrypted() {
-  if (!state.pass) {
-    const p = await askPassphrase();
-    if (!p) return;
-    state.pass = p;
-  }
-  const file = await encryptJson({ ...state.fam.toJSON(), startPerson: state.s.root }, state.pass);
+  if (!state.vault.slots.length) { toast(t('needKey')); openKeys(); return; }
+  const ids = new Set(state.vault.slots.map((s) => s.id));
+  const keyLabels = Object.fromEntries(Object.entries(state.keyLabels).filter(([id]) => ids.has(id)));
+  const file = await sealFile(state.vault, { ...state.fam.toJSON(), startPerson: state.s.root, keyLabels });
   download('family.enc.json', JSON.stringify(file));
   state.dirty = false;
   $('#dirtyBadge').hidden = true;
   toast(t('savedHelp'), 8000);
 }
 
-async function changePassphrase() {
-  const p = await askPassphrase();
-  if (!p) return;
-  state.pass = p;
-  await saveEncrypted();
-}
-
-async function copyShareLink() {
-  if (!state.pass) { toast(t('noPassYet')); return; }
-  const url = `${location.origin}${location.pathname}#k=${encodeURIComponent(state.pass)}`;
-  try {
-    await navigator.clipboard.writeText(url);
-    toast(t('linkCopied'));
-  } catch {
-    prompt(t('copyLink'), url);
-  }
+function copyShareLink() {
+  if (!state.pass) { toast(t('noPassYet')); openKeys(); return; }
+  copyText(shareLink(state.pass), t('linkCopied'));
 }
 
 // ---------------------------------------------------------------- Wiring
@@ -402,6 +501,22 @@ function wireStatic() {
   $$('.theme-btn').forEach((b) => { b.onclick = flipTheme; });
   darkQuery.addEventListener('change', applyTheme);
 
+  // Family filter
+  $('#familySelect').onchange = (e) => { state.s.family = e.target.value; refresh(); };
+  $('#familyMembers').onclick = (e) => {
+    const chip = e.target.closest('[data-pid]');
+    if (chip) { closeSidebar(); select(chip.dataset.pid); }
+  };
+  $('#btnFamilyTree').onclick = () => {
+    const head = familyHead(state.fam, state.s.family);
+    if (!head) return;
+    state.s.root = head.id;
+    state.s.mode = 'desc';
+    state.s.gens = Math.min(10, Math.max(2, generationsBelow(state.fam, head.id)));
+    closeSidebar();
+    refresh({ fit: true });
+  };
+
   // Perspective
   $('#rootSelect').onchange = (e) => { state.s.root = e.target.value; refresh({ fit: true }); };
   $$('#modeSeg button').forEach((b) => { b.onclick = () => { state.s.mode = b.dataset.mode; refresh({ fit: true }); }; });
@@ -417,12 +532,14 @@ function wireStatic() {
     state.editing = true;
     closeSidebar();
     changed();
-    $('#details [data-name]')?.focus();
+    $('#details [data-first]')?.focus();
   };
   $('#btnAdd').onclick = addPerson;
   $('#btnAddFirst').onclick = addPerson;
   $('#btnSave').onclick = saveEncrypted;
-  $('#btnPass').onclick = changePassphrase;
+  $('#btnKeys').onclick = openKeys;
+  $('#keyAddForm').addEventListener('submit', onAddKey);
+  $('#keysDone').onclick = () => $('#keysDialog').close();
   $('#btnExport').onclick = () => download('family.json', JSON.stringify(state.fam.toJSON(), null, 2));
   $('#btnShare').onclick = copyShareLink;
   $('#btnLock').onclick = () => {
@@ -432,6 +549,7 @@ function wireStatic() {
   };
 
   // Birthdays
+  $('#bdayDeceased').onchange = (e) => { state.s.bdayDeceased = e.target.checked; saveSettings(); drawBirthdays(); };
   $('#birthdayList').onclick = (e) => {
     const li = e.target.closest('li[data-pid]');
     if (li) { closeSidebar(); select(li.dataset.pid); }
