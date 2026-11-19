@@ -42,10 +42,14 @@ export function buildDescendants(fam, rootId, maxGen) {
   return fam.get(rootId) ? build(rootId, 0) : null;
 }
 
-const STEP = CARD_W + GAP_PARTNER;
 const LINE_STYLES = ['solid', 'dash', 'dot', 'dashdot'];
-const unitW = (n) => n.people.length * CARD_W + (n.people.length - 1) * GAP_PARTNER;
-const anchorOffset = (n) => (n.people.length > 1 ? CARD_W + GAP_PARTNER / 2 : CARD_W / 2);
+const PARTNER_LINE_GAP = 8; // vertical space between stacked partner lines
+// Someone with several partners gets wider gaps between the cards,
+// so the stacked partner lines can be seen clearly.
+const gapOf = (n) => (n.people.length > 2 ? GAP_PARTNER * 2 : GAP_PARTNER);
+const stepOf = (n) => CARD_W + gapOf(n);
+const unitW = (n) => n.people.length * CARD_W + (n.people.length - 1) * gapOf(n);
+const anchorOffset = (n) => (n.people.length > 1 ? CARD_W + gapOf(n) / 2 : CARD_W / 2);
 
 function measure(n) {
   n.uw = unitW(n);
@@ -92,12 +96,17 @@ export function layoutTree(root, cardH) {
     // used for the line joining the couple and for the lines down to their children.
     const several = n.people.length > 2;
     const styleOf = (j) => (several && j > 0 ? LINE_STYLES[(j - 1) % LINE_STYLES.length] : 'solid');
+    // Each partner's line starts at the main person and runs (behind the cards in between)
+    // to that partner. With several partners the lines are stacked a few pixels apart,
+    // so in the gaps between cards you see them one above the other.
+    const partnersCount = n.people.length - 1;
+    const lineY = (j) => y + cardH / 2 + (several ? (j - 1 - (partnersCount - 1) / 2) * PARTNER_LINE_GAP : 0);
+    const STEP = stepOf(n);
 
     n.people.forEach((pid, i) => {
       cards.push({ key: keyFor(pid), pid, x: ux + i * STEP, y, depth: n.depth, partner: i > 0 });
       if (i > 0) {
-        const x1 = ux + (i - 1) * STEP + CARD_W;
-        edges.push({ cls: `partner ${styleOf(i)}`, d: `M${x1},${y + cardH / 2}H${x1 + GAP_PARTNER}` });
+        edges.push({ cls: `partner ${styleOf(i)}`, d: `M${ux + CARD_W},${lineY(i)}H${ux + i * STEP}` });
       }
     });
 
@@ -105,7 +114,7 @@ export function layoutTree(root, cardH) {
     for (const c of n.children) {
       const j = c.via ? n.people.indexOf(c.via) : -1;
       let ax, ay;
-      if (j > 0) { ax = ux + j * STEP - GAP_PARTNER / 2; ay = y + cardH / 2; }
+      if (j > 0) { ax = ux + j * STEP - gapOf(n) / 2; ay = lineY(j); }
       else { ax = ux + CARD_W / 2; ay = y + cardH; }
       // With several partners, each couple's horizontal line sits a little lower
       // than the previous one, so the lines don't run on top of each other.
