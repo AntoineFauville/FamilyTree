@@ -18,6 +18,33 @@ export function isValidDate(s) {
   return true;
 }
 
+// Reads a date as people type it: day first, any separator.
+//   "29 03 1994", "29.03.1994", "29-03-1994", "29/03/1994", "29.3.1994"  -> "1994-03-29"
+//   "03.1994" -> "1994-03"     "1994" -> "1994"     (also accepts "1994-03-29")
+// Returns '' for an empty field and null if it can't be read or isn't a real date.
+export function parseUserDate(input) {
+  const s = (input || '').trim();
+  if (!s) return '';
+  const pad = (n) => String(n).padStart(2, '0');
+  const sep = '[\\s./\\-]+';
+  let m, out = null;
+  if ((m = new RegExp(`^(\\d{1,2})${sep}(\\d{1,2})${sep}(\\d{4})$`).exec(s))) out = `${m[3]}-${pad(m[2])}-${pad(m[1])}`;
+  else if ((m = new RegExp(`^(\\d{1,2})${sep}(\\d{4})$`).exec(s))) out = `${m[2]}-${pad(m[1])}`;
+  else if ((m = /^(\d{4})$/.exec(s))) out = m[1];
+  else if ((m = /^(\d{4})-(\d{1,2})(?:-(\d{1,2}))?$/.exec(s))) out = m[3] ? `${m[1]}-${pad(m[2])}-${pad(m[3])}` : `${m[1]}-${pad(m[2])}`;
+  return out && isValidDate(out) ? out : null;
+}
+
+// The stored date shown the way people type it: "29.03.1994", "03.1994", "1994".
+export function toUserDate(stored) {
+  const p = parseDate(stored);
+  if (!p) return stored || '';
+  const pad = (n) => String(n).padStart(2, '0');
+  if (p.d) return `${pad(p.d)}.${pad(p.m)}.${p.y}`;
+  if (p.m) return `${pad(p.m)}.${p.y}`;
+  return String(p.y);
+}
+
 export function compareBirth(a, b) {
   return (a.birth || '9999').localeCompare(b.birth || '9999');
 }

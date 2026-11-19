@@ -267,3 +267,7 @@ dialog h2 { font-size: 16px; text-transform: none; letter-spacing: 0; color: var
   #stage { height: 100vh; }
   .card-bg { filter: none; }
 }
+
+/* Under date fields: the typed date in words ("29 mars 1994") */
+.date-preview { min-height: 1.2em; font-size: 12px; color: var(--accent-text); }
+.field.invalid .date-preview { color: var(--danger); }

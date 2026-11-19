@@ -1,8 +1,19 @@
 // Right-hand panel: shows one person, or an editing form in edit mode.
 
-import { t, getLang } from './i18n.js';
+import { t, getLang, getLangs } from './i18n.js';
 import { nameLines, displayName, NAME_LANGS } from './model.js';
-import { formatDate, age, isValidDate } from './dates.js';
+import { formatDate, age, parseUserDate, toUserDate } from './dates.js';
+
+// "29 March 1994 / 29 მარტი 1994 / 29 mars 1994" in the interface language(s).
+function datePreview(stored) {
+  if (!stored) return '';
+  const out = [];
+  for (const l of getLangs()) {
+    const s = formatDate(stored, l);
+    if (!out.includes(s)) out.push(s);
+  }
+  return out.join(' / ');
+}
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -112,10 +123,10 @@ function renderForm(box, p, ctx) {
           <option value="f" ${p.gender === 'f' ? 'selected' : ''}>${esc(t('female'))}</option>
         </select></label>
       <div class="two">
-        <label class="field"><span>${esc(t('birth'))}</span>
-          <input data-date="birth" value="${esc(p.birth)}" placeholder="${esc(t('dateHint'))}" inputmode="numeric"></label>
-        <label class="field"><span>${esc(t('death'))}</span>
-          <input data-date="death" value="${esc(p.death)}" placeholder="${esc(t('dateHint'))}" inputmode="numeric"></label>
+        ${['birth', 'death'].map((k) => `
+        <label class="field"><span>${esc(t(k))}</span>
+          <input data-date="${k}" value="${esc(toUserDate(p[k]))}" placeholder="${esc(t('dateHint'))}" inputmode="numeric">
+          <small class="date-preview" data-preview="${k}">${esc(datePreview(p[k]))}</small></label>`).join('')}
       </div>
       <label class="toggle"><input type="checkbox" data-field="deceased" ${p.deceased ? 'checked' : ''}><span>${esc(t('deceased'))}</span></label>
       <label class="field"><span>${esc(t('notes'))}</span><textarea data-field="notes">${esc(p.notes)}</textarea></label>
@@ -137,10 +148,11 @@ function renderForm(box, p, ctx) {
     else if (tg.dataset.last) { p.last[tg.dataset.last] = tg.value; ctx.changed({ soft: true }); }
     else if (tg.dataset.field === 'notes') { p.notes = tg.value; ctx.changed({ soft: true }); }
     else if (tg.dataset.date) {
-      const v = tg.value.trim();
-      const ok = isValidDate(v);
+      const v = parseUserDate(tg.value);
+      const ok = v !== null;
       tg.closest('.field').classList.toggle('invalid', !ok);
-      tg.title = ok ? '' : t('badDate');
+      // Under the field: the date in words ("29 mars 1994"), or how to type it.
+      box.querySelector(`[data-preview=${tg.dataset.date}]`).textContent = ok ? datePreview(v) : t('badDate');
       if (ok) {
         p[tg.dataset.date] = v;
         if (tg.dataset.date === 'death' && v) {
