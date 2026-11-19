@@ -1,0 +1,8 @@
+# Never commit unencrypted family data. Only data/family.enc.json belongs in the repo.
+family.json
+*.plain.json
+data/*.json
+!data/family.enc.json
+
+.DS_Store
+Thumbs.db

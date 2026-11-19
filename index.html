@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
+  <meta name="referrer" content="no-referrer">
+  <title>Family Tree</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='9' r='5' fill='%232f6fdb'/%3E%3Ccircle cx='8' cy='24' r='5' fill='%23159a7f'/%3E%3Ccircle cx='24' cy='24' r='5' fill='%238048d8'/%3E%3Cpath d='M16 14v4M8 19v-1h16v1' stroke='%23888' stroke-width='2' fill='none'/%3E%3C/svg%3E">
+  <script>
+    // Apply the saved theme before the page draws, to avoid a white flash in dark mode.
+    try {
+      const th = JSON.parse(localStorage.getItem('familytree.settings') || '{}').theme;
+      if (th === 'light' || th === 'dark') document.documentElement.dataset.theme = th;
+    } catch (e) {}
+  </script>
+  <link rel="stylesheet" href="css/style.css">
+  <script type="module" src="js/main.js"></script>
+</head>
+<body>
+
+<!-- Lock screen: shown until the family file is decrypted -->
+<section id="lock" class="lock">
+  <div class="lock-card">
+    <div class="lock-top">
+      <button type="button" class="theme-btn" id="lockTheme" data-i18n-title="theme">◐</button>
+      <div class="seg small" data-ui-lang-seg>
+        <button type="button" data-lang="en">EN</button>
+        <button type="button" data-lang="ka">ქა</button>
+        <button type="button" data-lang="fr">FR</button>
+      </div>
+    </div>
+    <h1 data-i18n="appTitle"></h1>
+
+    <div id="lockPass" hidden>
+      <p class="muted" data-i18n="lockHint"></p>
+      <form id="passForm" class="row">
+        <input id="passInput" type="password" autocomplete="current-password" data-i18n-placeholder="passphrase" required>
+        <button class="primary" data-i18n="open"></button>
+      </form>
+      <p id="passError" class="error" hidden></p>
+      <p id="passBusy" class="muted" hidden data-i18n="unlocking"></p>
+    </div>
+
+    <div id="lockEmpty" hidden>
+      <p class="muted" data-i18n="noFile"></p>
+      <div class="stack">
+        <button id="btnNew" class="primary" data-i18n="startNew"></button>
+        <button id="btnDemo" data-i18n="loadDemo"></button>
+      </div>
+    </div>
+
+    <label class="link-btn">
+      <input type="file" id="fileOpen" accept=".json,application/json" hidden>
+      <span data-i18n="importFile"></span>
+    </label>
+  </div>
+</section>
+
+<!-- Main app -->
+<div id="app" hidden>
+  <header class="topbar">
+    <button id="btnMenu" class="icon-btn" data-i18n-title="menu">☰</button>
+    <h1 data-i18n="appTitle"></h1>
+    <button type="button" class="theme-btn" id="topTheme" data-i18n-title="theme">◐</button>
+    <span id="demoBadge" class="badge" hidden data-i18n="demoBanner"></span>
+    <span id="dirtyBadge" class="badge warn" hidden data-i18n="unsaved"></span>
+  </header>
+
+  <aside id="sidebar">
+    <section>
+      <h2 data-i18n="perspective"></h2>
+      <label class="field"><span data-i18n="person"></span><select id="rootSelect"></select></label>
+      <div class="seg" id="modeSeg">
+        <button type="button" data-mode="desc" data-i18n="viewDesc"></button>
+        <button type="button" data-mode="anc" data-i18n="viewAnc"></button>
+      </div>
+      <label class="field">
+        <span><span data-i18n="generations"></span>: <output id="gensOut"></output></span>
+        <input type="range" id="gens" min="1" max="10">
+      </label>
+    </section>
+
+    <section>
+      <h2 data-i18n="namesIn"></h2>
+      <label class="toggle"><input type="checkbox" data-name-lang="en"><span data-i18n="langEn"></span></label>
+      <label class="toggle"><input type="checkbox" data-name-lang="ka"><span data-i18n="langKa"></span></label>
+      <label class="toggle"><input type="checkbox" data-name-lang="fr"><span data-i18n="langFr"></span></label>
+    </section>
+
+    <section>
+      <h2 data-i18n="uiLanguage"></h2>
+      <div class="seg" data-ui-lang-seg>
+        <button type="button" data-lang="en">English</button>
+        <button type="button" data-lang="ka">ქართული</button>
+        <button type="button" data-lang="fr">Français</button>
+      </div>
+      <h2 data-i18n="theme"></h2>
+      <div class="seg" id="themeSeg">
+        <button type="button" data-theme-opt="auto" data-i18n="themeAuto"></button>
+        <button type="button" data-theme-opt="light" data-i18n="themeLight"></button>
+        <button type="button" data-theme-opt="dark" data-i18n="themeDark"></button>
+      </div>
+    </section>
+
+    <section>
+      <h2 data-i18n="birthdays"></h2>
+      <ol id="birthdayList" class="bday-list"></ol>
+    </section>
+
+    <section>
+      <h2 data-i18n="editing"></h2>
+      <label class="toggle"><input type="checkbox" id="editToggle"><span data-i18n="editMode"></span></label>
+      <div id="editTools" class="stack" hidden>
+        <button id="btnAdd" data-i18n="addPerson"></button>
+        <button id="btnSave" class="primary" data-i18n="saveFile"></button>
+        <button id="btnPass" data-i18n="changePass"></button>
+        <button id="btnExport" data-i18n="exportJson"></button>
+      </div>
+      <div class="stack">
+        <button id="btnShare" data-i18n="copyLink"></button>
+        <button id="btnLock" data-i18n="lock"></button>
+      </div>
+    </section>
+  </aside>
+  <div id="scrim" hidden></div>
+
+  <main id="stage">
+    <svg id="tree" xmlns="http://www.w3.org/2000/svg">
+      <g id="viewport"><g id="edges"></g><g id="cards"></g></g>
+    </svg>
+    <div id="emptyHint" class="empty" hidden>
+      <p data-i18n="emptyTree"></p>
+      <button id="btnAddFirst" class="primary" data-i18n="addPerson"></button>
+    </div>
+    <div class="zoom">
+      <button id="zoomIn" data-i18n-title="zoomIn">+</button>
+      <button id="zoomOut" data-i18n-title="zoomOut">−</button>
+      <button id="zoomFit" data-i18n-title="fit">⤢</button>
+    </div>
+  </main>
+
+  <aside id="details" hidden></aside>
+</div>
+
+<dialog id="passDialog">
+  <form method="dialog" id="passDialogForm">
+    <h2 data-i18n="setPassTitle"></h2>
+    <p class="muted" data-i18n="setPassHint"></p>
+    <input id="newPass1" type="password" autocomplete="new-password" data-i18n-placeholder="passphrase">
+    <input id="newPass2" type="password" autocomplete="new-password" data-i18n-placeholder="repeatPass">
+    <p id="newPassError" class="error" hidden></p>
+    <div class="row end">
+      <button type="button" id="newPassCancel" data-i18n="cancel"></button>
+      <button type="submit" class="primary" data-i18n="save"></button>
+    </div>
+  </form>
+</dialog>
+
+<div id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>
