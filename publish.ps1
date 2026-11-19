@@ -1,7 +1,8 @@
 # Puts your latest saved family tree online.
 #
 # 1. In the app: Edit mode -> make changes -> "Save encrypted file" (it lands in Downloads).
-# 2. Right-click this file -> "Run with PowerShell" (or run:  .\publish.ps1  in this folder).
+# 2. Double-click publish.cmd (same folder). It runs this script; Windows blocks
+#    running .ps1 files directly by default.
 #
 # It takes the newest family.enc*.json from Downloads, puts it in data\family.enc.json,
 # then commits and pushes it to GitHub. The website updates a few minutes later.

@@ -139,7 +139,14 @@ export class Family {
   }
 
   // Where a person's tree starts by default: up the father's line as far as it goes.
+  // Someone with no parents entered (yet) starts from their partner's family instead,
+  // so they still appear in a full tree (as the partner).
   defaultHead(id) {
+    const p = this.get(id);
+    if (p && !p.parents.length) {
+      const withFamily = this.partnersOf(id).find((q) => q.parents.length);
+      if (withFamily) return this.defaultHead(withFamily.id);
+    }
     let cur = id;
     const seen = new Set();
     while (!seen.has(cur)) {
@@ -239,4 +246,22 @@ export function familyHead(fam, key) {
   const members = fam.people.filter((p) => familyKey(p) === key).sort(compareBirth);
   const heads = members.filter((p) => !p.parents.some((id) => fam.get(id) && familyKey(fam.get(id)) === key));
   return (heads[0] || members[0] || null);
+}
+
+// ---- Things to fix, shown as a red triangle in Edit mode
+
+// Keys of the problems found on a person (translated with t()): [] when all is fine.
+export function problemsOf(p) {
+  const out = [];
+  if (!NAME_LANGS.some((l) => (p.first[l] || '').trim() || (p.last[l] || '').trim())) out.push('probNoName');
+  if (!p.gender) out.push('probNoGender');
+  if (p.birth && p.death && p.death < p.birth) out.push('probDates');
+  return out;
+}
+
+// A person added by mistake: no name, no dates, no notes and not linked to anyone.
+export function isEmptyPerson(fam, p) {
+  return !NAME_LANGS.some((l) => (p.first[l] || '').trim() || (p.last[l] || '').trim())
+    && !p.birth && !p.death && !p.notes.trim()
+    && !p.parents.length && !p.partners.length && !fam.childrenOf(p.id).length;
 }

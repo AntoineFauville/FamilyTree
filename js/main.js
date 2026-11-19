@@ -1,5 +1,5 @@
 import { t, setLangs, getLang, getLangs, UI_LANGS } from './i18n.js';
-import { Family, nameLines, displayName, familyGroups, familyKey, familyHead } from './model.js';
+import { Family, nameLines, displayName, familyGroups, familyKey, familyHead, problemsOf, isEmptyPerson } from './model.js';
 import { yearsLabel, nextBirthday, formatDayMonth } from './dates.js';
 import { openFile, sealFile, createVault, addKey, removeKey, isEncryptedFile, MIN_KEY_LENGTH } from './crypto.js';
 import { buildDescendants, layoutTree, cardHeight, CARD_W } from './layout.js';
@@ -141,9 +141,14 @@ function openFamily(data, { vault = null, slotId = null, pass = null, demo = fal
   state.editing = false;
   const s = state.s;
   const fam = state.fam;
-  if (!fam.get(s.person)) {
-    s.person = (fam.get(data.startPerson) ? data.startPerson : fam.people[0]?.id) || null;
+  // Always open on the view saved in the file (chosen when it was saved),
+  // rather than whatever this browser looked at last time.
+  if (fam.get(data.startPerson)) {
+    s.person = data.startPerson;
     s.head = fam.get(data.startHead) ? data.startHead : null;
+  } else if (!fam.get(s.person)) {
+    s.person = fam.people[0]?.id || null;
+    s.head = null;
   }
   $('#lock').hidden = true;
   $('#app').hidden = false;
@@ -295,6 +300,11 @@ function drawTree(fit) {
     years: (pid) => { const p = fam.get(pid); return p ? yearsLabel(p) : ''; },
     deceased: (pid) => !!fam.get(pid)?.deceased,
     dim: (pid) => !!s.family && !inFamily(pid),
+    // Red triangle with what to fix, only while editing (visitors never see it).
+    warn: (pid) => {
+      const p = fam.get(pid);
+      return state.editMode && p ? problemsOf(p).map((k) => t(k)).join(' · ') : '';
+    },
   });
   if (fit) requestAnimationFrame(() => treeView.fit(true));
 }
@@ -344,8 +354,12 @@ const detailsCtx = () => ({
     refresh({ fit: true });
   },
   changed: (opts) => changed(opts),
-  close: () => { state.selected = null; state.editing = false; refresh(); },
-  setEditing: (v) => { state.editing = v; drawDetails(); },
+  close: () => { dropIfEmpty(state.selected); state.selected = null; state.editing = false; refresh(); },
+  setEditing: (v) => {
+    state.editing = v;
+    if (!v && dropIfEmpty(state.selected)) { state.selected = null; refresh(); return; }
+    drawDetails();
+  },
   toast,
 });
 
@@ -356,8 +370,22 @@ function drawDetails() {
 }
 
 function select(id) {
+  if (state.selected !== id) dropIfEmpty(state.selected);
   state.selected = id;
   refresh();
+}
+
+// A person added by mistake and left empty ("?") is removed when you leave their form.
+function dropIfEmpty(id) {
+  const p = id && state.fam.get(id);
+  if (!p || !isEmptyPerson(state.fam, p)) return false;
+  state.fam.remove(id);
+  state.dirty = true;
+  return true;
+}
+
+function dropAllEmpty() {
+  for (const p of [...state.fam.people]) dropIfEmpty(p.id);
 }
 
 function changed({ soft = false } = {}) {
@@ -467,6 +495,8 @@ async function onAddKey(e) {
 
 async function saveEncrypted() {
   if (!state.vault.slots.length) { toast(t('needKey')); openKeys(); return; }
+  dropAllEmpty();
+  refresh();
   const ids = new Set(state.vault.slots.map((s) => s.id));
   const keyLabels = Object.fromEntries(Object.entries(state.keyLabels).filter(([id]) => ids.has(id)));
   // The view you save with is what people see first when they open the tree.

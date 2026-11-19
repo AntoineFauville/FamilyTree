@@ -271,3 +271,9 @@ dialog h2 { font-size: 16px; text-transform: none; letter-spacing: 0; color: var
 /* Under date fields: the typed date in words ("29 mars 1994") */
 .date-preview { min-height: 1.2em; font-size: 12px; color: var(--accent-text); }
 .field.invalid .date-preview { color: var(--danger); }
+
+/* Red triangle on tiles that need fixing (Edit mode), and the list in the form */
+.card-warn path { fill: #d6335b; }
+.card-warn text { fill: #fff; font-size: 11px; font-weight: 700; text-anchor: middle; }
+.warn-box { border: 1px solid #f0b3c0; background: rgba(214, 51, 91, .08); color: var(--danger); border-radius: var(--radius); padding: 8px 10px; font-size: 13px; margin-bottom: 12px; }
+.warn-box ul { margin: 4px 0 0; padding-left: 18px; }

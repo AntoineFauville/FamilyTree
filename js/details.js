@@ -1,7 +1,7 @@
 // Right-hand panel: shows one person, or an editing form in edit mode.
 
 import { t, getLang, getLangs } from './i18n.js';
-import { nameLines, displayName, NAME_LANGS } from './model.js';
+import { nameLines, displayName, NAME_LANGS, problemsOf } from './model.js';
 import { formatDate, age, parseUserDate, toUserDate } from './dates.js';
 
 // "29 March 1994 / 29 მარტი 1994 / 29 mars 1994" in the interface language(s).
@@ -108,6 +108,7 @@ function renderForm(box, p, ctx) {
       <button class="d-close" data-act="close" title="${esc(t('close'))}">×</button>
     </div>
     <div class="d-form">
+      <div class="warn-box" data-problems hidden></div>
       ${NAME_LANGS.map((l) => `
         <div class="name-lang">${esc(t('lang' + l[0].toUpperCase() + l[1]))}</div>
         <div class="two">
@@ -141,6 +142,17 @@ function renderForm(box, p, ctx) {
       </div>
     </div>
   `;
+
+  // "To fix: gender not set..." at the top of the form, kept up to date while typing.
+  const el = box.querySelector('[data-problems]');
+  const showProblems = () => {
+    if (!box.contains(el)) return; // the form was redrawn (e.g. for another person)
+    const list = problemsOf(p);
+    el.hidden = !list.length;
+    el.innerHTML = list.length
+      ? `⚠ ${esc(t('probTitle'))}<ul>${list.map((k) => `<li>${esc(t(k))}</li>`).join('')}</ul>` : '';
+  };
+  showProblems();
 
   box.oninput = (e) => {
     const tg = e.target;
@@ -196,6 +208,11 @@ function renderForm(box, p, ctx) {
       else renderDetails(box, ctx);
     }
   };
+
+  // Keep the "To fix" list current after every edit.
+  const onInput = box.oninput, onChange = box.onchange;
+  box.oninput = (e) => { onInput(e); showProblems(); };
+  box.onchange = (e) => { onChange(e); showProblems(); };
 
   box.onclick = (e) => {
     const un = e.target.closest('[data-unlink]');

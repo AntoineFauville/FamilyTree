@@ -114,6 +114,15 @@ export function createTreeView(svg, { onSelect }) {
       const yrs = el('text', { x: CARD_W / 2, y: cardH - 11, class: 'card-years' }, g);
       yrs.textContent = opts.years(c.pid);
 
+      // Small red triangle in the corner when something needs fixing (Edit mode only).
+      const warning = opts.warn ? opts.warn(c.pid) : '';
+      if (warning) {
+        const w = el('g', { class: 'card-warn' }, g);
+        el('title', {}, w).textContent = warning;
+        el('path', { d: `M${CARD_W - 16},9 L${CARD_W - 7},24 L${CARD_W - 25},24 Z` }, w);
+        el('text', { x: CARD_W - 16, y: 22 }, w).textContent = '!';
+      }
+
       if (isNew) {
         requestAnimationFrame(() => requestAnimationFrame(() => {
           g.style.transition = '';
