@@ -4,6 +4,9 @@ export const UI_LANGS = ['en', 'ka', 'fr']; // display order when several are on
 
 const S = {
   en: {
+    roleViewer: 'View only',
+    roleEditor: 'Can edit',
+    lastEditor: 'At least one code must be able to edit.',
     probTitle: 'To fix',
     probNoName: 'Name missing',
     probNoGender: 'Gender not set',
@@ -128,6 +131,9 @@ const S = {
     startTreeHere: 'Start the tree here',
   },
   fr: {
+    roleViewer: 'Lecture seule',
+    roleEditor: 'Peut modifier',
+    lastEditor: 'Au moins un code doit pouvoir modifier.',
     probTitle: 'À corriger',
     probNoName: 'Nom manquant',
     probNoGender: 'Genre non précisé',
@@ -252,6 +258,9 @@ const S = {
     startTreeHere: 'Commencer l’arbre ici',
   },
   ka: {
+    roleViewer: 'მხოლოდ ნახვა',
+    roleEditor: 'რედაქტირება შეუძლია',
+    lastEditor: 'მინიმუმ ერთ კოდს უნდა შეეძლოს რედაქტირება.',
     probTitle: 'გასასწორებელი',
     probNoName: 'სახელი აკლია',
     probNoGender: 'სქესი მითითებული არ არის',

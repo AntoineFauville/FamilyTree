@@ -113,6 +113,8 @@
     </section>
 
     <section>
+      <!-- Only shown when the tree was opened with an editor code (e.g. FauvilleEditor). -->
+      <div id="editSection">
       <h2 data-i18n="editing"></h2>
       <label class="toggle"><input type="checkbox" id="editToggle"><span data-i18n="editMode"></span></label>
       <div id="editTools" class="stack" hidden>
@@ -127,6 +129,7 @@
             <button id="btnExport" data-i18n="exportJson"></button>
           </div>
         </details>
+      </div>
       </div>
       <div class="stack">
         <button id="btnShare" data-i18n="copyLink"></button>
@@ -162,6 +165,10 @@
   <form id="keyAddForm" class="key-add">
     <input id="keyLabel" maxlength="40" data-i18n-placeholder="keyLabelPh" autocomplete="off">
     <input id="keyValue" data-i18n-placeholder="keyValuePh" autocomplete="off" autocapitalize="off" spellcheck="false">
+    <select id="keyRole">
+      <option value="viewer" data-i18n="roleViewer"></option>
+      <option value="editor" data-i18n="roleEditor"></option>
+    </select>
     <button class="primary" data-i18n="addKey"></button>
   </form>
   <p id="keyError" class="error" hidden></p>

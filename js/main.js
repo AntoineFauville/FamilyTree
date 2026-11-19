@@ -18,6 +18,8 @@ const state = {
   encFile: null,     // encrypted file waiting for a key
   vault: null,       // data key + locked copies of it, one per access key (memory only)
   keyLabels: {},     // slot id -> name ("Beridze side"); saved inside the encrypted data
+  keyRoles: {},      // slot id -> 'viewer' | 'editor'; saved inside the encrypted data
+  canEdit: false,    // opened with an editor code: show the editing tools
   known: {},         // slot id -> key as typed, for keys known in this session (to build links)
   pass: null,        // key used to open the tree (for the share link)
   dirty: false,
@@ -132,11 +134,16 @@ function openFamily(data, { vault = null, slotId = null, pass = null, demo = fal
   state.fam = new Family(data);
   state.vault = vault || createVault();
   state.keyLabels = { ...(data.keyLabels || {}) };
+  state.keyRoles = { ...(data.keyRoles || {}) };
   state.known = slotId ? { [slotId]: pass } : {};
   state.pass = pass;
   state.demo = demo;
   state.dirty = false;
-  state.editMode = edit;
+  // Editing tools only for an editor code. Files from before roles existed (no keyRoles):
+  // every code could edit. A new tree, the demo or an opened file: you are the editor.
+  const roles = data.keyRoles;
+  state.canEdit = !slotId || !roles || Object.keys(roles).length === 0 || roles[slotId] === 'editor';
+  state.editMode = edit && state.canEdit;
   state.selected = null;
   state.editing = false;
   const s = state.s;
@@ -226,6 +233,7 @@ function refresh({ fit = false } = {}) {
   // Sidebar controls
   drawPerspective();
   $$('[data-name-lang]').forEach((c) => { c.checked = !!s.langs[c.dataset.nameLang]; });
+  $('#editSection').hidden = !state.canEdit;
   $('#editToggle').checked = state.editMode;
   $('#editTools').hidden = !state.editMode;
   $('#demoBadge').hidden = !state.demo;
@@ -420,6 +428,20 @@ function keyName(id, i) {
   return state.keyLabels[id] || t('keyN', { n: i + 1 });
 }
 
+// A code's role. Files from before roles existed have none: every code could edit.
+function roleOf(id) {
+  return state.keyRoles[id] || (Object.keys(state.keyRoles).length ? 'viewer' : 'editor');
+}
+
+// Write every code's role down explicitly before changing one.
+function fixRoles() {
+  for (const s of state.vault.slots) state.keyRoles[s.id] = roleOf(s.id);
+}
+
+function editorCount() {
+  return state.vault.slots.filter((s) => roleOf(s.id) === 'editor').length;
+}
+
 function drawKeyList() {
   const list = $('#keyList');
   list.innerHTML = '';
@@ -429,6 +451,23 @@ function drawKeyList() {
     name.className = 'k-name';
     name.textContent = keyName(slot.id, i);
     li.appendChild(name);
+    // View only / Can edit, changeable here.
+    const role = document.createElement('select');
+    role.className = 'k-role';
+    for (const r of ['viewer', 'editor']) role.add(new Option(t(r === 'editor' ? 'roleEditor' : 'roleViewer'), r));
+    role.value = roleOf(slot.id);
+    role.onchange = () => {
+      if (role.value === 'viewer' && roleOf(slot.id) === 'editor' && editorCount() === 1) {
+        showKeyError(t('lastEditor'));
+        role.value = 'editor';
+        return;
+      }
+      fixRoles();
+      state.keyRoles[slot.id] = role.value;
+      showKeyError('');
+      changed();
+    };
+    li.appendChild(role);
     if (state.known[slot.id]) {
       const copy = document.createElement('button');
       copy.type = 'button';
@@ -448,9 +487,12 @@ function drawKeyList() {
     rm.title = t('remove');
     rm.onclick = () => {
       if (state.vault.slots.length === 1) { showKeyError(t('lastKey')); return; }
+      if (roleOf(slot.id) === 'editor' && editorCount() === 1) { showKeyError(t('lastEditor')); return; }
       if (!confirm(t('confirmRemoveKey', { name: keyName(slot.id, i) }))) return;
+      fixRoles();
       removeKey(state.vault, slot.id);
       delete state.keyLabels[slot.id];
+      delete state.keyRoles[slot.id];
       delete state.known[slot.id];
       changed();
       drawKeyList();
@@ -469,6 +511,7 @@ function openKeys() {
   showKeyError('');
   $('#keyLabel').value = '';
   $('#keyValue').value = '';
+  $('#keyRole').value = 'viewer';
   drawKeyList();
   $('#keysDialog').showModal();
   (state.vault.slots.length ? $('#keysDone') : $('#keyLabel')).focus();
@@ -479,7 +522,10 @@ async function onAddKey(e) {
   const key = $('#keyValue').value.trim();
   if (key.length < MIN_KEY_LENGTH) { showKeyError(t('keyTooShort')); $('#keyValue').focus(); return; }
   showKeyError('');
+  fixRoles();
   const id = await addKey(state.vault, key);
+  // The very first code of a new tree is yours: it must be able to edit.
+  state.keyRoles[id] = state.vault.slots.length === 1 ? 'editor' : $('#keyRole').value;
   const label = $('#keyLabel').value.trim();
   if (label) state.keyLabels[id] = label;
   state.known[id] = key;
@@ -499,9 +545,10 @@ async function saveEncrypted() {
   refresh();
   const ids = new Set(state.vault.slots.map((s) => s.id));
   const keyLabels = Object.fromEntries(Object.entries(state.keyLabels).filter(([id]) => ids.has(id)));
+  const keyRoles = Object.fromEntries(Object.entries(state.keyRoles).filter(([id]) => ids.has(id)));
   // The view you save with is what people see first when they open the tree.
   const file = await sealFile(state.vault, {
-    ...state.fam.toJSON(), startPerson: state.s.person, startHead: state.s.head, keyLabels,
+    ...state.fam.toJSON(), startPerson: state.s.person, startHead: state.s.head, keyLabels, keyRoles,
   });
   download('family.enc.json', JSON.stringify(file));
   state.dirty = false;
