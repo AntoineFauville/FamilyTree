@@ -281,3 +281,8 @@ dialog h2 { font-size: 16px; text-transform: none; letter-spacing: 0; color: var
 /* Access codes: role (view only / can edit) per code */
 .key-list .k-role { width: auto; padding: 3px 6px; font-size: 12.5px; }
 .key-add select { grid-column: 1 / -1; }
+
+/* Someone with several partners: one line style per couple (and their children) */
+.edge.dash { stroke-dasharray: 7 4; }
+.edge.dot { stroke-dasharray: 0.5 4; stroke-linecap: round; stroke-width: 2.2; }
+.edge.dashdot { stroke-dasharray: 8 3 1 3; }

@@ -43,6 +43,7 @@ export function buildDescendants(fam, rootId, maxGen) {
 }
 
 const STEP = CARD_W + GAP_PARTNER;
+const LINE_STYLES = ['solid', 'dash', 'dot', 'dashdot'];
 const unitW = (n) => n.people.length * CARD_W + (n.people.length - 1) * GAP_PARTNER;
 const anchorOffset = (n) => (n.people.length > 1 ? CARD_W + GAP_PARTNER / 2 : CARD_W / 2);
 
@@ -87,11 +88,16 @@ export function layoutTree(root, cardH) {
     n.ux = ux;
     const y = n.y;
 
+    // Several partners: each couple gets its own line style (solid, dashed, dotted...),
+    // used for the line joining the couple and for the lines down to their children.
+    const several = n.people.length > 2;
+    const styleOf = (j) => (several && j > 0 ? LINE_STYLES[(j - 1) % LINE_STYLES.length] : 'solid');
+
     n.people.forEach((pid, i) => {
       cards.push({ key: keyFor(pid), pid, x: ux + i * STEP, y, depth: n.depth, partner: i > 0 });
       if (i > 0) {
         const x1 = ux + (i - 1) * STEP + CARD_W;
-        edges.push({ cls: 'partner', d: `M${x1},${y + cardH / 2}H${x1 + GAP_PARTNER}` });
+        edges.push({ cls: `partner ${styleOf(i)}`, d: `M${x1},${y + cardH / 2}H${x1 + GAP_PARTNER}` });
       }
     });
 
@@ -101,8 +107,11 @@ export function layoutTree(root, cardH) {
       let ax, ay;
       if (j > 0) { ax = ux + j * STEP - GAP_PARTNER / 2; ay = y + cardH / 2; }
       else { ax = ux + CARD_W / 2; ay = y + cardH; }
-      const midY = y + cardH + LEVEL_GAP / 2;
-      edges.push({ cls: 'child', d: `M${ax},${ay}V${midY}H${c.ux + CARD_W / 2}V${c.y}` });
+      // With several partners, each couple's horizontal line sits a little lower
+      // than the previous one, so the lines don't run on top of each other.
+      const offset = several ? (j > 0 ? (j - 1) * 8 : -8) : 0;
+      const midY = y + cardH + LEVEL_GAP / 2 + offset;
+      edges.push({ cls: `child ${styleOf(j)}`, d: `M${ax},${ay}V${midY}H${c.ux + CARD_W / 2}V${c.y}` });
     }
   };
   place(root, 0);
