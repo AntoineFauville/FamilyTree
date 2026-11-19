@@ -1,8 +1,8 @@
 import { t, setLangs, getLang, getLangs, UI_LANGS } from './i18n.js';
-import { Family, nameLines, displayName, familyGroups, familyKey, familyHead, generationsBelow } from './model.js';
+import { Family, nameLines, displayName, familyGroups, familyKey, familyHead } from './model.js';
 import { yearsLabel, nextBirthday, formatDayMonth } from './dates.js';
 import { openFile, sealFile, createVault, addKey, removeKey, isEncryptedFile, MIN_KEY_LENGTH } from './crypto.js';
-import { buildDescendants, buildAncestors, layoutTree, layoutFamily, cardHeight } from './layout.js';
+import { buildDescendants, layoutTree, cardHeight, CARD_W } from './layout.js';
 import { createTreeView } from './render.js';
 import { renderDetails } from './details.js';
 import { sampleFamily } from './sample.js';
@@ -11,6 +11,7 @@ const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
 const SETTINGS_KEY = 'familytree.settings';
 const DATA_URL = 'data/family.enc.json';
+const MAX_GENERATIONS = 12;
 
 const state = {
   fam: null,
@@ -24,7 +25,8 @@ const state = {
   editMode: false,
   editing: false,
   selected: null,
-  s: { uiLangs: [guessLang()], theme: 'auto', langs: { en: true, ka: false, fr: false }, mode: 'anc', gens: 4, root: null, family: '' },
+  // person: who we look from (highlighted); head: the ancestor the tree starts from.
+  s: { uiLangs: [guessLang()], theme: 'auto', langs: { en: true, ka: false, fr: false }, person: null, head: null, family: '' },
 };
 
 function guessLang() {
@@ -40,6 +42,9 @@ function loadSettings() {
     // Older versions stored a single interface language.
     if (typeof saved.ui === 'string' && !Array.isArray(saved.uiLangs)) state.s.uiLangs = [saved.ui];
     state.s.ui = undefined;
+    // Older versions had a "root" person and ancestors/descendants modes.
+    if (saved.root && !saved.person) state.s.person = saved.root;
+    state.s.root = state.s.mode = state.s.gens = undefined;
   } catch { /* storage unavailable */ }
 }
 function saveSettings() {
@@ -71,13 +76,16 @@ function keyFromHash() {
 }
 
 function showPassForm() {
-  $('#lockEmpty').hidden = true;
-  $('#lockPass').hidden = false;
   $('#passInput').focus();
 }
 
 async function tryUnlock(pass) {
   $('#passError').hidden = true;
+  if (!state.encFile) {
+    $('#passError').textContent = t('noFile');
+    $('#passError').hidden = false;
+    return;
+  }
   $('#passBusy').hidden = false;
   try {
     const { vault, data, slotId } = await openFile(state.encFile, pass);
@@ -98,8 +106,8 @@ async function boot() {
   syncLangSegs();
 
   if (!window.crypto || !crypto.subtle) {
-    $('#lockEmpty').hidden = false;
-    $('#lockEmpty').innerHTML = '<p class="error">This page must be opened over https:// (or localhost).</p>';
+    $('#passError').textContent = 'This page must be opened over https:// (or localhost).';
+    $('#passError').hidden = false;
     return;
   }
 
@@ -115,7 +123,8 @@ async function boot() {
     const k = keyFromHash();
     if (k) { $('#passInput').value = k; tryUnlock(k); }
   } else {
-    $('#lockEmpty').hidden = false;
+    // Nothing published yet: offer the one-time setup (new tree / open a file).
+    $('#ownerSetup').hidden = false;
   }
 }
 
@@ -131,7 +140,11 @@ function openFamily(data, { vault = null, slotId = null, pass = null, demo = fal
   state.selected = null;
   state.editing = false;
   const s = state.s;
-  if (!state.fam.get(s.root)) s.root = (data.startPerson && state.fam.get(data.startPerson) ? data.startPerson : state.fam.people[0]?.id) || null;
+  const fam = state.fam;
+  if (!fam.get(s.person)) {
+    s.person = (fam.get(data.startPerson) ? data.startPerson : fam.people[0]?.id) || null;
+    s.head = fam.get(data.startHead) ? data.startHead : null;
+  }
   $('#lock').hidden = true;
   $('#app').hidden = false;
   refresh({ fit: true });
@@ -146,20 +159,67 @@ function nameOpts() {
   return (l.en || l.ka || l.fr) ? l : { en: true };
 }
 
-function refresh({ fit = false } = {}) {
+// ---- Perspective: a person, and the ancestor their tree starts from.
+
+function setPerson(id) {
   const { fam, s } = state;
-  if (!fam.get(s.root)) s.root = fam.people[0]?.id || null;
+  s.person = id;
+  // Same tree if the new person also descends from the current start (e.g. a cousin);
+  // otherwise switch to that person's own family line.
+  if (!(s.head === id || fam.isAncestor(s.head, id))) s.head = fam.defaultHead(id);
+}
+
+function setHead(id) {
+  state.s.head = id;
+}
+
+function ensureView() {
+  const { fam, s } = state;
+  if (!fam.get(s.person)) s.person = fam.people[0]?.id || null;
+  if (s.person && !fam.get(s.head)) s.head = fam.defaultHead(s.person);
+  if (!s.person) s.head = null;
+}
+
+// "grandfather (father's side)", "great-grandmother (mother's side)"...
+function relationLabel({ person, gen, side }) {
+  const g = person.gender === 'm' ? 'M' : person.gender === 'f' ? 'F' : '';
+  const word = gen === 1 ? t('relParent' + g)
+    : gen === 2 ? t('relGrand' + g)
+    : gen === 3 ? t('relGreat' + g)
+    : t('relUp', { n: gen });
+  return gen === 1 ? word : `${word} (${t(side === 'pat' ? 'sidePat' : 'sideMat')})`;
+}
+
+function drawPerspective() {
+  const { fam, s } = state;
+  const opts = nameOpts();
+  const psel = $('#personSelect');
+  const sorted = [...fam.people].sort((a, b) => displayName(a, opts).localeCompare(displayName(b, opts)));
+  psel.innerHTML = '';
+  for (const p of sorted) psel.add(new Option(displayName(p, opts) || t('noName'), p.id));
+  psel.value = s.person || '';
+
+  const hsel = $('#headSelect');
+  hsel.innerHTML = '';
+  const person = fam.get(s.person);
+  if (!person) return;
+  const ancestors = fam.ancestorsOf(person.id);
+  // The start chosen another way (e.g. "Start tree from here") may not be an ancestor: list it first.
+  if (s.head !== person.id && !ancestors.some((a) => a.person.id === s.head) && fam.get(s.head)) {
+    hsel.add(new Option(displayName(fam.get(s.head), opts), s.head));
+  }
+  for (const a of ancestors) hsel.add(new Option(`${displayName(a.person, opts)} — ${relationLabel(a)}`, a.person.id));
+  hsel.add(new Option(`${displayName(person, opts)} — ${t('relSelf')}`, person.id));
+  hsel.value = s.head || person.id;
+}
+
+function refresh({ fit = false } = {}) {
+  const { s } = state;
+  ensureView();
   saveSettings();
 
   // Sidebar controls
-  const sel = $('#rootSelect');
-  const sorted = [...fam.people].sort((a, b) => displayName(a, nameOpts()).localeCompare(displayName(b, nameOpts())));
-  sel.innerHTML = '';
-  for (const p of sorted) sel.add(new Option(displayName(p, nameOpts()) || t('noName'), p.id));
-  sel.value = s.root || '';
-  $$('#modeSeg button').forEach((b) => b.classList.toggle('on', b.dataset.mode === s.mode));
-  $('#gens').value = s.gens;
-  $('#gensOut').textContent = s.gens;
+  drawPerspective();
   $$('[data-name-lang]').forEach((c) => { c.checked = !!s.langs[c.dataset.nameLang]; });
   $('#editToggle').checked = state.editMode;
   $('#editTools').hidden = !state.editMode;
@@ -209,14 +269,21 @@ function drawTree(fit) {
   const langs = nameOpts();
   const lines = Math.max(1, Object.values(langs).filter(Boolean).length);
   const cardH = cardHeight(lines);
-  const layout = s.mode === 'desc'
-    ? layoutTree(buildDescendants(fam, s.root, s.gens), cardH)
-    // Family view: ancestors above, the person with partner(s) in the middle, their children below.
-    : layoutFamily(buildDescendants(fam, s.root, 2), buildAncestors(fam, s.root, s.gens), cardH);
+  // Everyone descending from the chosen ancestor, each shown with their partner(s).
+  const layout = layoutTree(buildDescendants(fam, s.head, MAX_GENERATIONS), cardH);
+  // The direct line from that ancestor down to the person gets highlighted.
+  const line = new Set([s.head, s.person].filter(Boolean));
+  for (const a of fam.ancestorsOf(s.person)) {
+    if (a.person.id === s.head || fam.isAncestor(s.head, a.person.id)) line.add(a.person.id);
+  }
+  // On small screens the view centers on the person rather than the top of the tree.
+  const pc = layout.cards.find((c) => c.pid === s.person);
+  if (pc && layout.bounds) layout.bounds.focusX = pc.x + CARD_W / 2;
   treeView.render({
     layout,
     cardH,
-    rootId: s.root,
+    rootId: s.person,
+    line: (pid) => line.has(pid),
     selected: state.selected,
     lines: (pid) => {
       const p = fam.get(pid);
@@ -270,9 +337,9 @@ const detailsCtx = () => ({
   editMode: state.editMode,
   editing: state.editing,
   select: (id) => select(id),
-  perspective: (id, mode) => {
-    state.s.root = id;
-    state.s.mode = mode;
+  // 'head': start the tree from this person; 'person': look from this person.
+  perspective: (id, what) => {
+    if (what === 'head') setHead(id); else setPerson(id);
     closeSidebar();
     refresh({ fit: true });
   },
@@ -402,7 +469,10 @@ async function saveEncrypted() {
   if (!state.vault.slots.length) { toast(t('needKey')); openKeys(); return; }
   const ids = new Set(state.vault.slots.map((s) => s.id));
   const keyLabels = Object.fromEntries(Object.entries(state.keyLabels).filter(([id]) => ids.has(id)));
-  const file = await sealFile(state.vault, { ...state.fam.toJSON(), startPerson: state.s.root, keyLabels });
+  // The view you save with is what people see first when they open the tree.
+  const file = await sealFile(state.vault, {
+    ...state.fam.toJSON(), startPerson: state.s.person, startHead: state.s.head, keyLabels,
+  });
   download('family.enc.json', JSON.stringify(file));
   state.dirty = false;
   $('#dirtyBadge').hidden = true;
@@ -510,24 +580,21 @@ function wireStatic() {
   $('#btnFamilyTree').onclick = () => {
     const head = familyHead(state.fam, state.s.family);
     if (!head) return;
-    state.s.root = head.id;
-    state.s.mode = 'desc';
-    state.s.gens = Math.min(10, Math.max(2, generationsBelow(state.fam, head.id)));
+    setHead(head.id);
     closeSidebar();
     refresh({ fit: true });
   };
 
   // Perspective
-  $('#rootSelect').onchange = (e) => { state.s.root = e.target.value; refresh({ fit: true }); };
-  $$('#modeSeg button').forEach((b) => { b.onclick = () => { state.s.mode = b.dataset.mode; refresh({ fit: true }); }; });
-  $('#gens').oninput = (e) => { state.s.gens = +e.target.value; refresh({ fit: true }); };
+  $('#personSelect').onchange = (e) => { setPerson(e.target.value); refresh({ fit: true }); };
+  $('#headSelect').onchange = (e) => { setHead(e.target.value); refresh({ fit: true }); };
 
   // Editing
   $('#editToggle').onchange = (e) => { state.editMode = e.target.checked; if (!state.editMode) state.editing = false; refresh(); };
   const addPerson = () => {
     state.editMode = true;
     const p = state.fam.add();
-    if (!state.s.root) state.s.root = p.id;
+    if (!state.s.person) state.s.person = state.s.head = p.id;
     state.selected = p.id;
     state.editing = true;
     closeSidebar();

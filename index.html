@@ -32,28 +32,27 @@
     </div>
     <h1 data-i18n="appTitle"></h1>
 
-    <div id="lockPass" hidden>
-      <p class="muted" data-i18n="lockHint"></p>
-      <form id="passForm" class="row">
-        <input id="passInput" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" data-i18n-placeholder="passphrase" required>
-        <button class="primary" data-i18n="open"></button>
-      </form>
-      <p id="passError" class="error" hidden></p>
-      <p id="passBusy" class="muted" hidden data-i18n="unlocking"></p>
-    </div>
+    <!-- The only thing visitors need: type the family code and press Enter.
+         (With a share link the code is already in the address and the tree opens by itself.) -->
+    <form id="passForm" class="code-form">
+      <input id="passInput" type="text" autocomplete="off" autocapitalize="off" spellcheck="false"
+             enterkeyhint="go" data-i18n-placeholder="passphrase" required>
+      <button class="primary" data-i18n="enter"></button>
+    </form>
+    <p id="passError" class="error" hidden></p>
+    <p id="passBusy" class="muted" hidden data-i18n="unlocking"></p>
 
-    <div id="lockEmpty" hidden>
-      <p class="muted" data-i18n="noFile"></p>
-      <div class="stack">
-        <button id="btnNew" class="primary" data-i18n="startNew"></button>
-        <button id="btnDemo" data-i18n="loadDemo"></button>
-      </div>
+    <div class="lock-links">
+      <button type="button" id="btnDemo" class="link-btn" data-i18n="loadDemo"></button>
+      <!-- Setup, only while no family tree has been published yet -->
+      <span id="ownerSetup" hidden>
+        <button type="button" id="btnNew" class="link-btn" data-i18n="startNew"></button>
+        <label class="link-btn">
+          <input type="file" id="fileOpen" accept=".json,application/json" hidden>
+          <span data-i18n="importFile"></span>
+        </label>
+      </span>
     </div>
-
-    <label class="link-btn">
-      <input type="file" id="fileOpen" accept=".json,application/json" hidden>
-      <span data-i18n="importFile"></span>
-    </label>
   </div>
 </section>
 
@@ -70,15 +69,10 @@
   <aside id="sidebar">
     <section>
       <h2 data-i18n="perspective"></h2>
-      <label class="field"><span data-i18n="person"></span><select id="rootSelect"></select></label>
-      <div class="seg" id="modeSeg">
-        <button type="button" data-mode="desc" data-i18n="viewDesc"></button>
-        <button type="button" data-mode="anc" data-i18n="viewAnc"></button>
-      </div>
-      <label class="field">
-        <span><span data-i18n="generations"></span>: <output id="gensOut"></output></span>
-        <input type="range" id="gens" min="1" max="10">
-      </label>
+      <!-- Person: who we look from (highlighted). Tree starts from: one of their ancestors;
+           the tree shows everyone descending from that ancestor, each with their partner. -->
+      <label class="field"><span data-i18n="person"></span><select id="personSelect"></select></label>
+      <label class="field"><span data-i18n="treeFrom"></span><select id="headSelect"></select></label>
     </section>
 
     <section>
@@ -124,8 +118,15 @@
       <div id="editTools" class="stack" hidden>
         <button id="btnAdd" data-i18n="addPerson"></button>
         <button id="btnSave" class="primary" data-i18n="saveFile"></button>
-        <button id="btnKeys" data-i18n="accessKeys"></button>
-        <button id="btnExport" data-i18n="exportJson"></button>
+        <p class="muted small" data-i18n="saveHint"></p>
+        <!-- Rarely needed: the family codes are already set. -->
+        <details class="advanced">
+          <summary data-i18n="advanced"></summary>
+          <div class="stack">
+            <button id="btnKeys" data-i18n="accessKeys"></button>
+            <button id="btnExport" data-i18n="exportJson"></button>
+          </div>
+        </details>
       </div>
       <div class="stack">
         <button id="btnShare" data-i18n="copyLink"></button>

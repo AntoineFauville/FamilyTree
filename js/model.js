@@ -117,6 +117,40 @@ export class Family {
     if (c) c.parents = c.parents.filter((x) => x !== parentId);
   }
 
+  // All ancestors of a person: [{ person, gen, side }], gen 1 = parents, 2 = grandparents...
+  // side: 'pat' (through the father) or 'mat' (through the mother).
+  // Ordered father's side first, then by generation, men first.
+  ancestorsOf(id) {
+    const out = [];
+    const seen = new Set([id]);
+    const walk = (pid, gen, side) => {
+      this.parentsOf(pid).forEach((par, i) => {
+        if (seen.has(par.id)) return;
+        seen.add(par.id);
+        const s = side || (par.gender === 'f' ? 'mat' : par.gender === 'm' ? 'pat' : (i === 0 ? 'pat' : 'mat'));
+        out.push({ person: par, gen, side: s });
+        walk(par.id, gen + 1, s);
+      });
+    };
+    walk(id, 1, null);
+    const sideOrder = { pat: 0, mat: 1 };
+    return out.sort((a, b) => sideOrder[a.side] - sideOrder[b.side] || a.gen - b.gen
+      || (a.person.gender === 'm' ? -1 : 0) - (b.person.gender === 'm' ? -1 : 0));
+  }
+
+  // Where a person's tree starts by default: up the father's line as far as it goes.
+  defaultHead(id) {
+    let cur = id;
+    const seen = new Set();
+    while (!seen.has(cur)) {
+      seen.add(cur);
+      const up = this.parentsOf(cur)[0];
+      if (!up) break;
+      cur = up.id;
+    }
+    return cur;
+  }
+
   // Is `a` an ancestor of `b`?
   isAncestor(a, b, seen = new Set()) {
     const p = this.get(b);
@@ -205,12 +239,4 @@ export function familyHead(fam, key) {
   const members = fam.people.filter((p) => familyKey(p) === key).sort(compareBirth);
   const heads = members.filter((p) => !p.parents.some((id) => fam.get(id) && familyKey(fam.get(id)) === key));
   return (heads[0] || members[0] || null);
-}
-
-// Number of generations below a person (1 = no children).
-export function generationsBelow(fam, id, seen = new Set()) {
-  if (seen.has(id)) return 0;
-  seen.add(id);
-  const kids = fam.childrenOf(id);
-  return 1 + (kids.length ? Math.max(...kids.map((k) => generationsBelow(fam, k.id, seen))) : 0);
 }

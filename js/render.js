@@ -91,7 +91,8 @@ export function createTreeView(svg, { onSelect }) {
         g.style.transform = `translate(${c.x}px, ${c.y}px)`;
       }
       g.dataset.pid = c.pid;
-      g.classList.toggle('root', c.pid === opts.rootId && !c.partner);
+      g.classList.toggle('root', c.pid === opts.rootId);
+      g.classList.toggle('line', !!(opts.line && opts.line(c.pid)));
       g.classList.toggle('selected', c.pid === opts.selected);
       g.classList.toggle('partner', c.partner);
       g.classList.toggle('deceased', opts.deceased(c.pid));

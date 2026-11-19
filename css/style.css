@@ -138,9 +138,17 @@ input[type=range] { padding: 0; border: 0; }
 .lock { min-height: 100%; display: grid; place-items: center; padding: 16px; }
 .lock-card { width: min(420px, 100%); background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 24px; }
 .lock-card h1 { font-size: 22px; margin-bottom: 14px; }
-.lock-card .row input { flex: 1; }
-.link-btn { display: inline-block; margin-top: 16px; color: var(--accent-text); font-size: 14px; cursor: pointer; }
-.link-btn:hover { text-decoration: underline; }
+/* Big, simple code field + Enter button, easy for everyone */
+.code-form { display: flex; flex-direction: column; gap: 10px; }
+.code-form input { font-size: 20px; padding: 12px 14px; text-align: center; }
+.code-form button { font-size: 18px; padding: 12px; }
+.lock-links { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 18px; }
+.lock-links span { display: contents; }
+.link-btn { display: inline-block; border: 0; background: none; padding: 0; color: var(--accent-text); font-size: 13.5px; cursor: pointer; }
+.link-btn:hover { text-decoration: underline; background: none; }
+
+/* Highlighted line from the tree's ancestor down to the chosen person */
+.card.line .card-bg { stroke: var(--accent); stroke-width: 1.5; }
 
 /* ---------- App layout ---------- */
 #app { height: 100%; display: grid; grid-template-columns: var(--sidebar-w) 1fr auto; grid-template-rows: auto 1fr; }
@@ -206,6 +214,7 @@ input[type=range] { padding: 0; border: 0; }
 .d-form h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 18px 0 8px; }
 .d-form .two { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 #familyPanel { margin-top: 10px; }
+.advanced summary { cursor: pointer; font-size: 13px; color: var(--muted); padding: 4px 0; }
 button.wide { width: 100%; margin-bottom: 10px; }
 .card { transition: transform .6s ease, opacity .4s ease; }
 .card.dim { opacity: .3 !important; }

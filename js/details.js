@@ -43,8 +43,8 @@ function renderView(box, p, ctx) {
     </div>
     <div class="d-dates">${dates}</div>
     <div class="d-actions">
-      <button data-act="desc">${esc(t('showDesc'))}</button>
-      <button data-act="anc">${esc(t('showAnc'))}</button>
+      <button data-act="person">${esc(t('lookFromHere'))}</button>
+      <button data-act="head">${esc(t('startTreeHere'))}</button>
       ${ctx.editMode ? `<button class="primary" data-act="edit">${esc(t('edit'))}</button>` : ''}
     </div>
     ${rel('parents', ctx.fam.parentsOf(p.id))}
@@ -59,8 +59,8 @@ function renderView(box, p, ctx) {
     if (go) return ctx.select(go.dataset.go);
     const act = e.target.closest('[data-act]')?.dataset.act;
     if (act === 'close') ctx.close();
-    if (act === 'desc') ctx.perspective(p.id, 'desc');
-    if (act === 'anc') ctx.perspective(p.id, 'anc');
+    if (act === 'person') ctx.perspective(p.id, 'person');
+    if (act === 'head') ctx.perspective(p.id, 'head');
     if (act === 'edit') ctx.setEditing(true);
   };
   box.onchange = null;

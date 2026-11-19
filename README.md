@@ -1,16 +1,19 @@
 # Family Tree
 
 A private family tree that runs entirely in the browser. It's plain HTML, CSS and JavaScript with no build step and no server.
-The family data is stored **encrypted** in `data/family.enc.json`. Only people who know the passphrase can read it.
+The family data is stored **encrypted** in `data/family.enc.json`. Only people with a family code can read it.
 
 ## Features
-- Vertical tree with two perspectives:
-  - **Descendants ↓**: pick anyone (e.g. your partner's grandfather) to see their partners, children, grandchildren, and so on.
-  - **Ancestors ↑**: pick anyone to see their parents, grandparents, and so on.
-- Click a person to see their details and relatives, or switch the perspective to them.
+- Opening screen: one field for the family code and an **Enter** button. A share link (`…#k=code`) opens the tree directly.
+- Vertical tree, chosen with two menus:
+  - **Person**: who you look from, e.g. you or your wife. They and their direct line are highlighted.
+  - **Tree starts from**: one of that person's ancestors, e.g. "grandfather (mother's side)". The tree shows everyone descending from them, each with their partner.
+  - Picking a cousin keeps the same tree. Picking someone from another family switches to their own family line.
+- Click a person to see their details and relatives, to view from them, or to start the tree from them.
+- Family filter: highlight everyone with a given birth name.
 - Names in English, Georgian and French. Tick which ones to show; several are shown together.
-- Interface in English, French and Georgian.
-- Next-birthdays list.
+- Interface in English, French and Georgian, also several at once.
+- Next-birthdays list, optionally with people who have died ("would have been 94").
 - Built-in editor (tick **Edit mode**).
 
 ## Run it locally
