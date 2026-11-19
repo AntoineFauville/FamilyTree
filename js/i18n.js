@@ -4,6 +4,11 @@ export const UI_LANGS = ['en', 'ka', 'fr']; // display order when several are on
 
 const S = {
   en: {
+    birthdaysShort: 'Birthdays',
+    display: 'Display',
+    more: 'More',
+    bdayEveryone: 'Everyone in the family tree',
+    bdayCircleHint: 'Close family of {name}: everyone in this tree, plus the partner’s parents and siblings.',
     roleViewer: 'View only',
     roleEditor: 'Can edit',
     lastEditor: 'At least one code must be able to edit.',
@@ -131,6 +136,11 @@ const S = {
     startTreeHere: 'Start the tree here',
   },
   fr: {
+    birthdaysShort: 'Anniversaires',
+    display: 'Affichage',
+    more: 'Plus',
+    bdayEveryone: 'Toute la famille',
+    bdayCircleHint: 'Famille proche de {name} : tout cet arbre, plus les parents et frères et sœurs du conjoint.',
     roleViewer: 'Lecture seule',
     roleEditor: 'Peut modifier',
     lastEditor: 'Au moins un code doit pouvoir modifier.',
@@ -258,6 +268,11 @@ const S = {
     startTreeHere: 'Commencer l’arbre ici',
   },
   ka: {
+    birthdaysShort: 'დაბადების დღეები',
+    display: 'ჩვენება',
+    more: 'მეტი',
+    bdayEveryone: 'მთელი ოჯახი',
+    bdayCircleHint: '{name}-ის ახლო ოჯახი: მთელი ეს ხე, პლუს მეუღლის მშობლები და და-ძმები.',
     roleViewer: 'მხოლოდ ნახვა',
     roleEditor: 'რედაქტირება შეუძლია',
     lastEditor: 'მინიმუმ ერთ კოდს უნდა შეეძლოს რედაქტირება.',
@@ -423,6 +438,8 @@ export function tFirst(key, vars) {
 
 export function applyI18n(root = document) {
   root.querySelectorAll('[data-i18n]').forEach((e) => { e.textContent = t(e.dataset.i18n); });
+  // Short labels (toolbar): first interface language only, so they stay short.
+  root.querySelectorAll('[data-i18n-first]').forEach((e) => { e.textContent = tFirst(e.dataset.i18nFirst); });
   root.querySelectorAll('[data-i18n-placeholder]').forEach((e) => { e.placeholder = t(e.dataset.i18nPlaceholder); });
   root.querySelectorAll('[data-i18n-title]').forEach((e) => {
     e.title = t(e.dataset.i18nTitle);

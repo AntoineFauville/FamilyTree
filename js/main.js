@@ -234,6 +234,7 @@ function refresh({ fit = false } = {}) {
   drawPerspective();
   $$('[data-name-lang]').forEach((c) => { c.checked = !!s.langs[c.dataset.nameLang]; });
   $('#editSection').hidden = !state.canEdit;
+  $('#toolEdit').hidden = !state.canEdit;
   $('#editToggle').checked = state.editMode;
   $('#editTools').hidden = !state.editMode;
   $('#demoBadge').hidden = !state.demo;
@@ -289,6 +290,7 @@ function drawTree(fit) {
   for (const a of fam.ancestorsOf(s.person)) {
     if (a.person.id === s.head || fam.isAncestor(s.head, a.person.id)) line.add(a.person.id);
   }
+  state.treePids = new Set(layout.cards.map((c) => c.pid)); // who is in this view (for birthdays)
   // On small screens the view centers on the person rather than the top of the tree.
   const pc = layout.cards.find((c) => c.pid === s.person);
   if (pc && layout.bounds) layout.bounds.focusX = pc.x + CARD_W / 2;
@@ -323,15 +325,46 @@ function drawTree(fit) {
   if (fit) requestAnimationFrame(() => treeView.fit(true));
 }
 
+// The close circle for birthdays: everyone in the tree being viewed, plus the chosen
+// person's own close family on the other side: their partner's parents and siblings
+// (and their own parents, siblings, partners and children, in case they're not in the tree).
+function circleIds() {
+  const { fam, s } = state;
+  const ids = new Set(state.treePids || []);
+  const add = (list) => list.forEach((p) => ids.add(p.id));
+  if (fam.get(s.person)) {
+    ids.add(s.person);
+    add(fam.parentsOf(s.person));
+    add(fam.siblingsOf(s.person));
+    add(fam.childrenOf(s.person));
+    for (const partner of fam.partnersOf(s.person)) {
+      ids.add(partner.id);
+      add(fam.parentsOf(partner.id));
+      add(fam.siblingsOf(partner.id));
+    }
+  }
+  return ids;
+}
+
 function drawBirthdays() {
   const list = $('#birthdayList');
   const includeDeceased = !!state.s.bdayDeceased;
+  const everyone = !!state.s.bdayAll;
   $('#bdayDeceased').checked = includeDeceased;
-  const items = state.fam.people
+  $('#bdayAll').checked = everyone;
+  const person = state.fam.get(state.s.person);
+  $('#bdayScopeHint').textContent = everyone || !person ? '' : t('bdayCircleHint', { name: displayName(person, nameOpts()) });
+  const circle = everyone ? null : circleIds();
+  const all = state.fam.people
+    .filter((p) => !circle || circle.has(p.id))
     .map((p) => ({ p, nb: nextBirthday(p, new Date(), { includeDeceased }) }))
     .filter((x) => x.nb)
-    .sort((a, b) => a.nb.days - b.nb.days)
-    .slice(0, 8);
+    .sort((a, b) => a.nb.days - b.nb.days);
+  // Counter on the toolbar icon: living people with a birthday in the next 7 days.
+  const soon = all.filter((x) => x.nb.days <= 7 && !x.p.deceased).length;
+  $('#bdayBadge').hidden = !soon;
+  $('#bdayBadge').textContent = soon;
+  const items = all.slice(0, 12);
   if (!items.length) {
     list.innerHTML = `<li class="muted">${t('noBirthdays')}</li>`;
     return;
@@ -601,9 +634,19 @@ function syncLangSegs() {
   });
 }
 
+// ---- Toolbar panels: one open at a time; the same button, a click on the tree or Esc closes it.
+
+function openPanel(name) {
+  const already = !$(`#panel-${name}`).hidden;
+  closeSidebar();
+  if (already) return;
+  $(`#panel-${name}`).hidden = false;
+  $(`.tool[data-panel="${name}"]`).classList.add('on');
+}
+
 function closeSidebar() {
-  $('#sidebar').classList.remove('open');
-  $('#scrim').hidden = true;
+  $$('#panels .panel').forEach((p) => { p.hidden = true; });
+  $$('.tool[data-panel]').forEach((b) => b.classList.remove('on'));
 }
 
 function wireStatic() {
@@ -700,6 +743,7 @@ function wireStatic() {
 
   // Birthdays
   $('#bdayDeceased').onchange = (e) => { state.s.bdayDeceased = e.target.checked; saveSettings(); drawBirthdays(); };
+  $('#bdayAll').onchange = (e) => { state.s.bdayAll = e.target.checked; saveSettings(); drawBirthdays(); };
   $('#birthdayList').onclick = (e) => {
     const li = e.target.closest('li[data-pid]');
     if (li) { closeSidebar(); select(li.dataset.pid); }
@@ -710,9 +754,10 @@ function wireStatic() {
   $('#zoomOut').onclick = () => treeView.zoomOut();
   $('#zoomFit').onclick = () => treeView.fit(true);
 
-  // Mobile menu
-  $('#btnMenu').onclick = () => { $('#sidebar').classList.add('open'); $('#scrim').hidden = false; };
-  $('#scrim').onclick = closeSidebar;
+  // Toolbar panels
+  $$('.tool[data-panel]').forEach((b) => { b.onclick = () => openPanel(b.dataset.panel); });
+  $('#stage').addEventListener('pointerdown', closeSidebar);
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSidebar(); });
 
   window.addEventListener('beforeunload', (e) => {
     if (state.dirty) { e.preventDefault(); e.returnValue = ''; }
