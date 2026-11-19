@@ -1,6 +1,6 @@
-import { t, setLangs, getLang, getLangs, UI_LANGS } from './i18n.js';
+import { t, tFirst, setLangs, getLang, getLangs, UI_LANGS } from './i18n.js';
 import { Family, nameLines, displayName, familyGroups, familyKey, familyHead, problemsOf, isEmptyPerson } from './model.js';
-import { yearsLabel, nextBirthday, formatDayMonth } from './dates.js';
+import { yearsLabel, nextBirthday, formatDayMonth, age } from './dates.js';
 import { openFile, sealFile, createVault, addKey, removeKey, isEncryptedFile, MIN_KEY_LENGTH } from './crypto.js';
 import { buildDescendants, layoutTree, cardHeight, CARD_W } from './layout.js';
 import { createTreeView } from './render.js';
@@ -305,7 +305,13 @@ function drawTree(fit) {
       if (p.deceased) lines[0] = `† ${lines[0]}`; // cross before the name of people who have died
       return lines;
     },
-    years: (pid) => { const p = fam.get(pid); return p ? yearsLabel(p) : ''; },
+    // "1994 – 32 years old" for living people with a full birth date; "1905 – 1980" otherwise.
+    years: (pid) => {
+      const p = fam.get(pid);
+      if (!p) return '';
+      const a = p.deceased ? null : age(p);
+      return a === null ? yearsLabel(p) : `${yearsLabel(p)} ${tFirst('ageYears', { n: a })}`;
+    },
     deceased: (pid) => !!fam.get(pid)?.deceased,
     dim: (pid) => !!s.family && !inFamily(pid),
     // Red triangle with what to fix, only while editing (visitors never see it).

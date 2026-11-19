@@ -415,6 +415,12 @@ export function t(key, vars) {
   return parts.join(' / ');
 }
 
+// Same as t(), but only in the first interface language: for short texts on the
+// tree cards, where "32 years old / 32 ans / 32 წლის" would not fit.
+export function tFirst(key, vars) {
+  return one(current[0], key, vars);
+}
+
 export function applyI18n(root = document) {
   root.querySelectorAll('[data-i18n]').forEach((e) => { e.textContent = t(e.dataset.i18n); });
   root.querySelectorAll('[data-i18n-placeholder]').forEach((e) => { e.placeholder = t(e.dataset.i18nPlaceholder); });
