@@ -34,6 +34,8 @@ export function normalizePerson(p) {
     id: p.id || newId(),
     first,
     last,
+    // Other first names (middle names), per language; shown in the details, not on the cards.
+    middle: { en: (p.middle && p.middle.en) || '', ka: (p.middle && p.middle.ka) || '', fr: (p.middle && p.middle.fr) || '' },
     gender: p.gender === 'm' || p.gender === 'f' ? p.gender : '',
     birth: p.birth || '',
     death: p.death || '',
@@ -211,6 +213,13 @@ export class Family {
 
 // Names to show, in the order en / ka / fr, for the enabled languages.
 // Identical names are shown once. Falls back to any name if none of the enabled ones exist.
+// Full name with the other first names: "Antoine Jean Marie Fauville" (for the details panel).
+export function fullNameLong(p, lang) {
+  // English and French use the same alphabet: if one has no other first names, use the other's.
+  const middle = p.middle[lang] || (lang === 'en' ? p.middle.fr : lang === 'fr' ? p.middle.en : '');
+  return [p.first[lang], middle, p.last[lang]].map((s) => (s || '').trim()).filter(Boolean).join(' ');
+}
+
 export function fullName(p, lang) {
   return [p.first[lang], p.last[lang]].map((s) => (s || '').trim()).filter(Boolean).join(' ');
 }
@@ -250,7 +259,7 @@ export function displayName(p, langs) {
 // ---- Family names (last names), for the family filter
 
 // Same family whatever the spelling details: "Béridzé" and "beridze" match.
-const fold = (s) => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase();
+const fold = (s) => (s || '').normalize('NFD').replace(/\p{M}/gu, '').trim().toLowerCase();
 
 // Grouping key: the last name in the first language that has one (en, then ka, then fr).
 export function familyKey(p) {

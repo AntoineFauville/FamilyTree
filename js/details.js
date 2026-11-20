@@ -1,8 +1,8 @@
 // Right-hand panel: shows one person, or an editing form in edit mode.
 
 import { t, getLang, getLangs } from './i18n.js';
-import { nameLines, displayName, NAME_LANGS, problemsOf } from './model.js';
-import { formatDate, age, parseUserDate, toUserDate } from './dates.js';
+import { nameLines, displayName, fullNameLong, NAME_LANGS, problemsOf } from './model.js';
+import { formatDate, age, ageAtDate, parseUserDate, toUserDate } from './dates.js';
 
 // "29 March 1994 / 29 მარტი 1994 / 29 mars 1994" in the interface language(s).
 function datePreview(stored) {
@@ -51,9 +51,30 @@ function renderView(box, p, ctx) {
       }).join('')}
     </div></div>` : '';
 
+  // Parents as "Father: … · 32 at the birth" / "Mother: … · 28 at the birth".
+  const parentsBlock = () => {
+    const list = ctx.fam.parentsOf(p.id);
+    if (!list.length) return '';
+    return `<div class="d-rel"><h3>${esc(t('parents'))}</h3>${list.map((q) => {
+      const label = q.gender === 'm' ? t('fatherLabel') : q.gender === 'f' ? t('motherLabel') : t('parentLabel');
+      const at = ageAtDate(q.birth, p.birth);
+      const ageText = at ? ` · ${at.approx ? '≈ ' : ''}${esc(t('ageAtBirth', { n: at.n }))}` : '';
+      return `<div class="d-parent"><span class="d-parent-label">${esc(label)}</span>
+        <span class="chip" data-go="${q.id}">${esc(nameOf(ctx, q))}</span><span class="muted small">${ageText}</span></div>`;
+    }).join('')}</div>`;
+  };
+
+  // Full names with the other first names, in every language that has one.
+  const longNames = [];
+  for (const l of NAME_LANGS) {
+    const n = fullNameLong(p, l);
+    if (n && !longNames.includes(n)) longNames.push(n);
+  }
+  if (!longNames.length) longNames.push(...nameLines(p, { en: 1, ka: 1, fr: 1 }));
+
   box.innerHTML = `
     <div class="d-head">
-      <div class="d-names">${nameLines(p, { en: 1, ka: 1, fr: 1 }).map((n, i) => `<div>${i === 0 && p.deceased ? '† ' : ''}${esc(n)}</div>`).join('')}</div>
+      <div class="d-names">${longNames.map((n, i) => `<div>${i === 0 && p.deceased ? '† ' : ''}${esc(n)}</div>`).join('')}</div>
       <button class="d-close" data-act="close" title="${esc(t('close'))}">×</button>
     </div>
     <div class="d-dates">${dates}</div>
@@ -62,7 +83,7 @@ function renderView(box, p, ctx) {
       <button data-act="head">${esc(t('startTreeHere'))}</button>
       ${ctx.editMode ? `<button class="primary" data-act="edit">${esc(t('edit'))}</button>` : ''}
     </div>
-    ${rel('parents', ctx.fam.parentsOf(p.id))}
+    ${parentsBlock()}
     ${rel('partners', ctx.fam.partnersOf(p.id))}
     ${rel('siblings', ctx.fam.siblingsOf(p.id))}
     ${rel('children', ctx.fam.childrenOf(p.id))}
@@ -125,7 +146,9 @@ function renderForm(box, p, ctx) {
             <input data-first="${l}" value="${esc(p.first[l])}" ${l === 'ka' ? 'lang="ka"' : ''}></label>
           <label class="field"><span>${esc(t('lastName'))}</span>
             <input data-last="${l}" value="${esc(p.last[l])}" ${l === 'ka' ? 'lang="ka"' : ''}></label>
-        </div>`).join('')}
+        </div>
+        <label class="field"><span>${esc(t('middleNames'))}</span>
+          <input data-middle="${l}" value="${esc(p.middle[l])}" ${l === 'ka' ? 'lang="ka"' : ''}></label>`).join('')}
       <label class="field"><span>${esc(t('gender'))}</span>
         <select data-field="gender">
           <option value="">${esc(t('unknown'))}</option>
@@ -167,6 +190,7 @@ function renderForm(box, p, ctx) {
     const tg = e.target;
     if (tg.dataset.first) { p.first[tg.dataset.first] = tg.value; ctx.changed({ soft: true }); }
     else if (tg.dataset.last) { p.last[tg.dataset.last] = tg.value; ctx.changed({ soft: true }); }
+    else if (tg.dataset.middle) { p.middle[tg.dataset.middle] = tg.value; ctx.changed({ soft: true }); }
     else if (tg.dataset.field === 'notes') { p.notes = tg.value; ctx.changed({ soft: true }); }
     else if (tg.dataset.date) {
       const v = parseUserDate(tg.value);

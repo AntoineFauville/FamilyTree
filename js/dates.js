@@ -91,6 +91,20 @@ export function age(p, today = new Date()) {
   return a;
 }
 
+// How old someone born on `birth` was on `date` (e.g. a parent when their child was born).
+// Exact with two full dates; with only years it is approximate. null if unknown.
+export function ageAtDate(birth, date) {
+  const b = parseDate(birth), d = parseDate(date);
+  if (!b || !d) return null;
+  if (b.m && b.d && d.m && d.d) {
+    let n = d.y - b.y;
+    if (d.m < b.m || (d.m === b.m && d.d < b.d)) n--;
+    return n >= 0 ? { n, approx: false } : null;
+  }
+  const n = d.y - b.y;
+  return n >= 0 ? { n, approx: true } : null;
+}
+
 // Next birthday for people with a full birth date: { date, days, turns }.
 // People who have died are included only when asked (for "would have been N").
 export function nextBirthday(p, today = new Date(), { includeDeceased = false } = {}) {

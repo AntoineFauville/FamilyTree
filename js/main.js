@@ -325,6 +325,7 @@ function drawTree(fit) {
   // On small screens the view centers on the person rather than the top of the tree.
   const pc = layout.cards.find((c) => c.pid === s.person);
   if (pc && layout.bounds) layout.bounds.focusX = pc.x + CARD_W / 2;
+  state.lastLayout = layout; // for the PDF export
   treeView.render({
     layout,
     cardH,
@@ -375,6 +376,55 @@ function circleIds() {
     }
   }
   return ids;
+}
+
+// ---- Birthdays into a calendar app: a .ics file with one yearly all-day event per person.
+
+function birthdayPeople() {
+  const circle = state.s.bdayAll ? null : circleIds();
+  return state.fam.people.filter((p) => (!circle || circle.has(p.id)) && !p.deceased && /^\d{4}-\d{2}-\d{2}$/.test(p.birth));
+}
+
+function makeIcs(people) {
+  // Calendar text escaping: backslash, comma and semicolon get a backslash; new lines become \n.
+  const esc = (x) => String(x).replace(/\\/g, '\\\\').replace(/[,;]/g, (c) => `\\${c}`).replace(/\n/g, '\\n');
+  // Lines longer than 75 bytes must be folded (continued on the next line after a space).
+  const fold = (line) => {
+    const out = [];
+    let cur = '';
+    for (const ch of line) {
+      if (new TextEncoder().encode(cur + ch).length > 74) { out.push(cur); cur = ' '; }
+      cur += ch;
+    }
+    out.push(cur);
+    return out.join('\r\n');
+  };
+  const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '');
+  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//FamilyTree//Birthdays//EN', 'CALSCALE:GREGORIAN',
+    `X-WR-CALNAME:${esc(tFirst('birthdays'))}`];
+  for (const p of people) {
+    const [y, m, d] = p.birth.split('-');
+    const name = displayName(p, nameOpts());
+    // 29 February: on the last day of February in other years.
+    const rule = m === '02' && d === '29' ? 'RRULE:FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=-1' : 'RRULE:FREQ=YEARLY';
+    lines.push('BEGIN:VEVENT', `UID:${p.id}-birthday@familytree`, `DTSTAMP:${stamp}`,
+      `DTSTART;VALUE=DATE:${y}${m}${d}`, rule, `SUMMARY:${esc(`🎂 ${name} (${y})`)}`, 'TRANSP:TRANSPARENT',
+      'BEGIN:VALARM', 'ACTION:DISPLAY', 'TRIGGER:PT9H', `DESCRIPTION:${esc(`🎂 ${name}`)}`, 'END:VALARM', 'END:VEVENT');
+  }
+  lines.push('END:VCALENDAR');
+  return lines.map(fold).join('\r\n') + '\r\n';
+}
+
+function exportBirthdays() {
+  const people = birthdayPeople();
+  if (!people.length) { toast(t('noBirthdays')); return; }
+  const url = URL.createObjectURL(new Blob([makeIcs(people)], { type: 'text/calendar' }));
+  const a = Object.assign(document.createElement('a'), { href: url, download: 'birthdays.ics' });
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+  toast(t('calendarDone', { n: people.length }), 12000);
 }
 
 function drawBirthdays() {
@@ -869,6 +919,90 @@ function syncLangSegs() {
   });
 }
 
+// ---- PDF of the current view: one page the exact size of the tree, printed by the browser
+// (choose "Save as PDF"). Vector text, so it stays sharp at any size, Georgian included.
+
+const PX_TO_MM = 25.4 / 96;
+
+// Letters and digits only, accents removed: "Albert Fauville" -> "AlbertFauville".
+const fileWord = (s) => (s || '').normalize('NFD').replace(/\p{M}/gu, '').replace(/[^A-Za-z0-9]/g, '');
+
+function pdfFileName() {
+  const p = state.fam.get(state.s.person), h = state.fam.get(state.s.head);
+  const first = (x) => x ? (x.first.en || x.first.fr || x.first.ka) : '';
+  const last = (x) => x ? (x.last.en || x.last.fr || x.last.ka) : '';
+  const who = fileWord(first(p)) || 'Person';
+  const from = fileWord(first(h) + last(h)) || 'Family';
+  return `familytree${who}To${from}`;
+}
+
+function exportPdf() {
+  const layout = state.lastLayout;
+  if (!layout || !layout.bounds) return;
+  const { minX, minY, maxX, maxY } = layout.bounds;
+  const pad = 40, titleH = 70;
+  const vx = minX - pad, vy = minY - pad - titleH;
+  const w = maxX - minX + 2 * pad, h = maxY - minY + 2 * pad + titleH;
+
+  // Copy the tree as drawn now, without animations, highlights for editing, or cards fading out.
+  const edges = $('#edges').cloneNode(true);
+  edges.removeAttribute('id');
+  edges.removeAttribute('class');
+  const cards = $('#cards').cloneNode(true);
+  cards.removeAttribute('id');
+  for (const g of [...cards.querySelectorAll('.card')]) {
+    if (g.style.pointerEvents === 'none') { g.remove(); continue; } // was leaving the view
+    const m = /translate\(([-\d.]+)px,\s*([-\d.]+)px\)/.exec(g.style.transform || '');
+    g.removeAttribute('style');
+    if (m) g.setAttribute('transform', `translate(${m[1]} ${m[2]})`);
+    g.classList.remove('selected', 'dim');
+    g.querySelectorAll('.card-warn').forEach((x) => x.remove());
+  }
+
+  const p = state.fam.get(state.s.person), hd = state.fam.get(state.s.head);
+  const esc = (x) => String(x).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const title = tFirst('pdfTitle', { person: p ? displayName(p, nameOpts()) : '', head: hd ? displayName(hd, nameOpts()) : '' });
+  const date = new Date().toLocaleDateString(getLang() === 'ka' ? 'ka-GE' : getLang() === 'fr' ? 'fr-FR' : 'en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+  const wMm = (w * PX_TO_MM).toFixed(1), hMm = (h * PX_TO_MM).toFixed(1);
+  const css = $('link[rel="stylesheet"]').href;
+
+  const html = `<!doctype html>
+<html lang="${getLang()}" data-theme="light">
+<head>
+<meta charset="utf-8">
+<title>${esc(pdfFileName())}</title>
+<link rel="stylesheet" href="${esc(css)}">
+<style>
+  @page { size: ${wMm}mm ${hMm}mm; margin: 0; }
+  html, body { margin: 0; background: #fff; overflow: visible; height: auto; }
+  svg { display: block; width: ${wMm}mm; height: ${hMm}mm; }
+  .card { transition: none !important; opacity: 1 !important; }
+  .card-bg { filter: none; }
+  .pdf-title { font: 600 26px system-ui, "Segoe UI", "Noto Sans Georgian", sans-serif; fill: #1d2330; }
+  .pdf-date { font: 14px system-ui, "Segoe UI", sans-serif; fill: #6b7280; }
+  .hint { font: 15px system-ui, sans-serif; padding: 12px 16px; background: #e8f0fd; color: #1d2330; }
+  @media print { .hint { display: none; } }
+</style>
+</head>
+<body>
+<div class="hint">${esc(tFirst('pdfHint'))}</div>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vx} ${vy} ${w} ${h}">
+  <text class="pdf-title" x="${vx + pad}" y="${vy + 42}">${esc(title)}</text>
+  <text class="pdf-date" x="${vx + pad}" y="${vy + 64}">${esc(date)}</text>
+  ${edges.outerHTML}
+  ${cards.outerHTML}
+</svg>
+<script>window.addEventListener('load', () => setTimeout(() => window.print(), 400));<\/script>
+</body>
+</html>`;
+
+  const win = window.open('', '_blank');
+  if (!win) { toast(t('popupBlocked'), 8000); return; }
+  win.document.open();
+  win.document.write(html);
+  win.document.close();
+}
+
 // ---- Toolbar panels: one open at a time; the same button, a click on the tree or Esc closes it.
 
 function openPanel(name) {
@@ -949,6 +1083,7 @@ function wireStatic() {
   // Perspective
   $('#personSelect').onchange = (e) => { setPerson(e.target.value); refresh({ fit: true }); };
   $('#headSelect').onchange = (e) => { setHead(e.target.value); refresh({ fit: true }); };
+  $('#btnPdf').onclick = () => { closeSidebar(); exportPdf(); };
   // Lost? Back to the view this link opens on.
   $('#btnStartView').onclick = () => {
     if (!state.startView) return;
@@ -1006,6 +1141,7 @@ function wireStatic() {
 
   // Birthdays
   $('#bdayDeceased').onchange = (e) => { state.s.bdayDeceased = e.target.checked; saveSettings(); drawBirthdays(); };
+  $('#btnCalendar').onclick = exportBirthdays;
   $('#bdayAll').onchange = (e) => { state.s.bdayAll = e.target.checked; saveSettings(); drawBirthdays(); };
   $('#birthdayList').onclick = (e) => {
     const li = e.target.closest('li[data-pid]');
