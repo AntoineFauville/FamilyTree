@@ -1,5 +1,5 @@
 import { t, tFirst, setLangs, getLang, getLangs, UI_LANGS } from './i18n.js';
-import { Family, nameLines, displayName, familyGroups, familyKey, familyHead, problemsOf, isEmptyPerson } from './model.js';
+import { Family, cardNames, displayName, familyGroups, familyKey, familyHead, problemsOf, isEmptyPerson } from './model.js';
 import { yearsLabel, nextBirthday, formatDayMonth, age } from './dates.js';
 import { openFile, sealFile, createVault, addKey, removeKey, isEncryptedFile, MIN_KEY_LENGTH } from './crypto.js';
 import { buildDescendants, layoutTree, cardHeight, CARD_W } from './layout.js';
@@ -20,6 +20,7 @@ const state = {
   vault: null,       // data key + locked copies of it, one per access key (memory only)
   keyLabels: {},     // slot id -> name ("Beridze side"); saved inside the encrypted data
   keyRoles: {},      // slot id -> 'viewer' | 'editor'; saved inside the encrypted data
+  keyStarts: {},     // slot id -> { person, head }: where that code's link opens
   canEdit: false,    // opened with an editor code: show the editing tools
   known: {},         // slot id -> key as typed, for keys known in this session (to build links)
   pass: null,        // key used to open the tree (for the share link)
@@ -154,6 +155,8 @@ function openFamily(data, { vault = null, slotId = null, pass = null, demo = fal
   state.vault = vault || createVault();
   state.keyLabels = { ...(data.keyLabels || {}) };
   state.keyRoles = { ...(data.keyRoles || {}) };
+  // slot id -> { person, head }: where that code's link opens (e.g. Gugava -> Tamar, from Jokia).
+  state.keyStarts = { ...(data.keyStarts || {}) };
   state.known = slotId ? { [slotId]: pass } : {};
   state.pass = pass;
   state.demo = demo;
@@ -168,15 +171,21 @@ function openFamily(data, { vault = null, slotId = null, pass = null, demo = fal
   state.editing = false;
   const s = state.s;
   const fam = state.fam;
-  // Always open on the view saved in the file (chosen when it was saved),
-  // rather than whatever this browser looked at last time.
-  if (fam.get(data.startPerson)) {
-    s.person = data.startPerson;
-    s.head = fam.get(data.startHead) ? data.startHead : null;
-  } else if (!fam.get(s.person)) {
-    s.person = fam.people[0]?.id || null;
-    s.head = null;
+  // The starting view: the code's own (📍 in Access codes), else the one saved with the tree.
+  const own = slotId && state.keyStarts[slotId];
+  if (own && fam.get(own.person)) {
+    state.startView = { person: own.person, head: fam.get(own.head) ? own.head : null };
+  } else if (fam.get(data.startPerson)) {
+    state.startView = { person: data.startPerson, head: fam.get(data.startHead) ? data.startHead : null };
+  } else {
+    state.startView = { person: fam.people[0]?.id || null, head: null };
   }
+  // This browser remembers the last view for each link, so people come back where they left off.
+  state.viewKey = slotId || 'file';
+  const last = (s.views || {})[state.viewKey];
+  const view = last && fam.get(last.person) ? { person: last.person, head: fam.get(last.head) ? last.head : null } : state.startView;
+  s.person = view.person;
+  s.head = view.head;
   $('#lock').hidden = true;
   $('#app').hidden = false;
   refresh({ fit: true });
@@ -248,6 +257,8 @@ function drawPerspective() {
 function refresh({ fit = false } = {}) {
   const { s } = state;
   ensureView();
+  // Remember this link's current view in this browser (only the two ids, no names).
+  if (state.viewKey && s.person) s.views = { ...(s.views || {}), [state.viewKey]: { person: s.person, head: s.head } };
   saveSettings();
 
   // Sidebar controls
@@ -302,8 +313,7 @@ function drawTree(fit) {
   const { fam, s } = state;
   $('#emptyHint').hidden = fam.people.length > 0;
   const langs = nameOpts();
-  const lines = Math.max(1, Object.values(langs).filter(Boolean).length);
-  const cardH = cardHeight(lines);
+  const cardH = cardHeight();
   // Everyone descending from the chosen ancestor, each shown with their partner(s).
   const layout = layoutTree(buildDescendants(fam, s.head, MAX_GENERATIONS), cardH);
   // The direct line from that ancestor down to the person gets highlighted.
@@ -321,19 +331,19 @@ function drawTree(fit) {
     rootId: s.person,
     line: (pid) => line.has(pid),
     selected: state.selected,
+    // Card lines: first name(s), then last name(s), in the chosen name languages.
     lines: (pid) => {
       const p = fam.get(pid);
       if (!p) return ['?'];
-      const lines = nameLines(p, langs);
-      if (p.deceased) lines[0] = `† ${lines[0]}`; // cross before the name of people who have died
-      return lines;
+      const [first, last] = cardNames(p, langs);
+      return [p.deceased ? `† ${first}` : first, last]; // cross before the name of people who have died
     },
-    // "1994 – 32 years old" for living people with a full birth date; "1905 – 1980" otherwise.
+    // Then the years ("1994 –", "1905 – 1980") and, for living people with a full birth date, the age.
     years: (pid) => {
       const p = fam.get(pid);
-      if (!p) return '';
+      if (!p) return [];
       const a = p.deceased ? null : age(p);
-      return a === null ? yearsLabel(p) : `${yearsLabel(p)} ${tFirst('ageYears', { n: a })}`;
+      return [yearsLabel(p), a === null ? '' : tFirst('ageYears', { n: a })];
     },
     deceased: (pid) => !!fam.get(pid)?.deceased,
     dim: (pid) => !!s.family && !inFamily(pid),
@@ -528,6 +538,20 @@ function drawKeyList() {
       changed();
     };
     li.appendChild(role);
+    // Where this code's link opens: set it to the person and tree start shown now.
+    const start = document.createElement('button');
+    start.type = 'button';
+    const st = state.keyStarts[slot.id];
+    const stP = st && state.fam.get(st.person), stH = st && state.fam.get(st.head);
+    start.textContent = stP ? `📍 ${displayName(stP, nameOpts())}${stH ? ` · ${displayName(stH, nameOpts())}` : ''}` : `📍 ${t('setStartView')}`;
+    start.title = t('setStartViewHint');
+    start.onclick = () => {
+      state.keyStarts[slot.id] = { person: state.s.person, head: state.s.head };
+      changed();
+      drawKeyList();
+      toast(t('startViewSet'), 6000);
+    };
+    li.appendChild(start);
     if (state.known[slot.id]) {
       const copy = document.createElement('button');
       copy.type = 'button';
@@ -553,6 +577,7 @@ function drawKeyList() {
       removeKey(state.vault, slot.id);
       delete state.keyLabels[slot.id];
       delete state.keyRoles[slot.id];
+      delete state.keyStarts[slot.id];
       delete state.known[slot.id];
       changed();
       drawKeyList();
@@ -610,6 +635,7 @@ async function sealCurrent() {
   // The view you save with is what people see first when they open the tree.
   return sealFile(state.vault, {
     ...state.fam.toJSON(), startPerson: state.s.person, startHead: state.s.head, keyLabels, keyRoles,
+    keyStarts: Object.fromEntries(Object.entries(state.keyStarts).filter(([id]) => ids.has(id))),
   });
 }
 
@@ -785,7 +811,7 @@ async function openHistory() {
         if (state.dirty && !confirm(t('leaveWarning'))) return;
         try {
           const { data } = await openFile(h.file, state.pass);
-          const keep = { vault: state.vault, keyLabels: state.keyLabels, keyRoles: state.keyRoles };
+          const keep = { vault: state.vault, keyLabels: state.keyLabels, keyRoles: state.keyRoles, keyStarts: state.keyStarts };
           state.fam = new Family(data);
           Object.assign(state, keep); // keep the current codes; only the people change
           state.dirty = true;
@@ -923,6 +949,15 @@ function wireStatic() {
   // Perspective
   $('#personSelect').onchange = (e) => { setPerson(e.target.value); refresh({ fit: true }); };
   $('#headSelect').onchange = (e) => { setHead(e.target.value); refresh({ fit: true }); };
+  // Lost? Back to the view this link opens on.
+  $('#btnStartView').onclick = () => {
+    if (!state.startView) return;
+    state.s.person = state.startView.person;
+    state.s.head = state.startView.head;
+    state.selected = null;
+    closeSidebar();
+    refresh({ fit: true });
+  };
 
   // Editing
   $('#editToggle').onchange = (e) => { state.editMode = e.target.checked; if (!state.editMode) state.editing = false; refresh(); };

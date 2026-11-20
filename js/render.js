@@ -1,6 +1,6 @@
 // Draws the laid-out tree as SVG, with animated moves, pan and pinch/wheel zoom.
 
-import { CARD_W, LINE_H, CARD_PAD_TOP, CARD_PAD_BOTTOM } from './layout.js';
+import { CARD_W, LINE_H, SUB_H, CARD_PAD_TOP } from './layout.js';
 
 const NS = 'http://www.w3.org/2000/svg';
 const GEN_COLORS = ['#2f6fdb', '#159a7f', '#8048d8', '#d6335b', '#e07b1a', '#4f9a2a', '#2a8fb8', '#b5428f'];
@@ -12,8 +12,15 @@ function el(tag, attrs = {}, parent) {
   return e;
 }
 
-function clip(s, max) {
-  return s.length > max ? s.slice(0, max - 1) + '…' : s;
+// Puts text in an SVG text element, shortened with "…" if it is wider than maxWidth.
+// (The full text stays in the card's tooltip.)
+function fitText(t, text, maxWidth) {
+  t.textContent = text;
+  let len = text.length;
+  while (len > 1 && t.getComputedTextLength() > maxWidth) {
+    len--;
+    t.textContent = text.slice(0, len).trimEnd() + '…';
+  }
 }
 
 export function createTreeView(svg, { onSelect }) {
@@ -99,20 +106,22 @@ export function createTreeView(svg, { onSelect }) {
       g.classList.toggle('dim', !!(opts.dim && opts.dim(c.pid)));
       g.replaceChildren();
 
-      const lines = opts.lines(c.pid);
+      // Four short lines: first name, last name, then years and age (smaller, grey).
+      const lines = opts.lines(c.pid); // [first names, last names]
+      const subs = opts.years(c.pid);  // ['1994 –', '32 years old'] (age only for living people)
       const title = el('title', {}, g);
-      title.textContent = lines.join(' / ');
+      title.textContent = [lines.join(' '), ...subs].filter(Boolean).join('\n');
       el('rect', { class: 'card-bg', width: CARD_W, height: cardH, rx: 6 }, g);
       el('rect', { class: 'card-bar', width: CARD_W, height: 4, rx: 2,
         fill: GEN_COLORS[((c.depth % GEN_COLORS.length) + GEN_COLORS.length) % GEN_COLORS.length] }, g);
-      const nameArea = cardH - CARD_PAD_TOP - CARD_PAD_BOTTOM;
-      const startY = CARD_PAD_TOP + (nameArea - lines.length * LINE_H) / 2 + 13;
       lines.forEach((line, i) => {
-        const t = el('text', { x: CARD_W / 2, y: startY + i * LINE_H, class: 'card-name' }, g);
-        t.textContent = clip(line, 24);
+        const t = el('text', { x: CARD_W / 2, y: CARD_PAD_TOP + 12 + i * LINE_H, class: i ? 'card-name last' : 'card-name' }, g);
+        fitText(t, line, CARD_W - 12);
       });
-      const yrs = el('text', { x: CARD_W / 2, y: cardH - 11, class: 'card-years' }, g);
-      yrs.textContent = opts.years(c.pid);
+      subs.forEach((line, i) => {
+        const t = el('text', { x: CARD_W / 2, y: CARD_PAD_TOP + 2 * LINE_H + 12 + i * SUB_H, class: 'card-years' }, g);
+        fitText(t, line, CARD_W - 10);
+      });
 
       // Small red triangle in the corner when something needs fixing (Edit mode only).
       const warning = opts.warn ? opts.warn(c.pid) : '';

@@ -4,6 +4,10 @@ export const UI_LANGS = ['en', 'ka', 'fr']; // display order when several are on
 
 const S = {
   en: {
+    backToStart: "↺ Back to the starting view",
+    setStartView: "Opens on: (default)",
+    setStartViewHint: "Click to make this link open on the person and tree start shown now",
+    startViewSet: "This link will now open on the current view. Press Save to keep it.",
     signInToSave: "Sign in to save your changes online. Only emails on the editors list can save.",
     signInGoogle: "Sign in with Google",
     emailPh: "Your email address",
@@ -168,6 +172,10 @@ const S = {
     startTreeHere: 'Start the tree here',
   },
   fr: {
+    backToStart: "↺ Revenir à la vue de départ",
+    setStartView: "S’ouvre sur : (par défaut)",
+    setStartViewHint: "Cliquez pour que ce lien s’ouvre sur la personne et le début d’arbre affichés maintenant",
+    startViewSet: "Ce lien s’ouvrira maintenant sur la vue actuelle. Appuyez sur Enregistrer pour la garder.",
     signInToSave: "Connectez-vous pour enregistrer vos modifications en ligne. Seuls les e-mails de la liste des éditeurs peuvent enregistrer.",
     signInGoogle: "Se connecter avec Google",
     emailPh: "Votre adresse e-mail",
@@ -332,6 +340,10 @@ const S = {
     startTreeHere: 'Commencer l’arbre ici',
   },
   ka: {
+    backToStart: "↺ საწყის ხედზე დაბრუნება",
+    setStartView: "იხსნება: (ნაგულისხმევი)",
+    setStartViewHint: "დააჭირეთ, რომ ეს ბმული გაიხსნას ახლა ნაჩვენებ პიროვნებასა და ხის დასაწყისზე",
+    startViewSet: "ეს ბმული ახლა მიმდინარე ხედით გაიხსნება. შესანარჩუნებლად დააჭირეთ შენახვას.",
     signInToSave: "ცვლილებების ონლაინ შესანახად შედით სისტემაში. შენახვა შეუძლიათ მხოლოდ რედაქტორების სიაში მყოფ ელფოსტებს.",
     signInGoogle: "Google-ით შესვლა",
     emailPh: "თქვენი ელფოსტა",

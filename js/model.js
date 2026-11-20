@@ -173,7 +173,10 @@ export class Family {
     const seen = new Set();
     while (!seen.has(cur)) {
       seen.add(cur);
-      const up = this.parentsOf(cur)[0];
+      // Father first, but prefer a parent whose own parents are in the tree
+      // (so a missing gender, or a parent with no family entered, doesn't stop the climb).
+      const parents = this.parentsOf(cur);
+      const up = parents.find((q) => q.parents.length) || parents[0];
       if (!up) break;
       cur = up.id;
     }
@@ -231,6 +234,13 @@ function pick(langs, get) {
 export function nameLines(p, langs) {
   const out = pick(langs, (l) => fullName(p, l));
   return out.length ? out : ['?'];
+}
+
+// For the cards: [first names, last names], each in the chosen languages ("Antoine / ანტუან").
+export function cardNames(p, langs) {
+  const first = pick(langs, (l) => (p.first[l] || '').trim()).join(' / ');
+  const last = pick(langs, (l) => (p.last[l] || '').trim()).join(' / ');
+  return first || last ? [first, last] : ['?', ''];
 }
 
 export function displayName(p, langs) {

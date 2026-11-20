@@ -2,16 +2,18 @@
 // A node is a "unit": the main person plus (in descendants view) their partners,
 // with child units below.
 
-export const CARD_W = 184;
+// Compact cards: first name / last name / years / age, each on its own short line.
+export const CARD_W = 136;
 export const GAP_PARTNER = 18;
-export const GAP_SIB = 30;
-export const LEVEL_GAP = 64;
-export const LINE_H = 18;
-export const CARD_PAD_TOP = 18;
-export const CARD_PAD_BOTTOM = 26;
+export const GAP_SIB = 22;
+export const LEVEL_GAP = 56;
+export const LINE_H = 16;        // name lines
+export const SUB_H = 14;         // years / age lines
+export const CARD_PAD_TOP = 14;
+export const CARD_PAD_BOTTOM = 8;
 
-export function cardHeight(lines) {
-  return CARD_PAD_TOP + lines * LINE_H + CARD_PAD_BOTTOM;
+export function cardHeight() {
+  return CARD_PAD_TOP + 2 * LINE_H + 2 * SUB_H + CARD_PAD_BOTTOM;
 }
 
 // The tree from a starting person: them (and partners), their children, grandchildren...
