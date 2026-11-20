@@ -30,7 +30,7 @@ const state = {
   selected: null,
   // Online editing (Firebase): version this browser started from (null = not loaded),
   // signed-in user and their role ('admin' | 'editor' | null).
-  cloud: { version: null, user: null, role: null },
+  cloud: { version: null, user: null, role: null, saving: false },
   // person: who we look from (highlighted); head: the ancestor the tree starts from.
   s: { uiLangs: [guessLang()], theme: 'auto', langs: { en: true, ka: false, fr: false }, person: null, head: null, family: '' },
 };
@@ -111,7 +111,6 @@ async function boot() {
   wireStatic();
   syncLangSegs();
   drawCloud();
-  startCloud();
 
   if (!window.crypto || !crypto.subtle) {
     $('#passError').textContent = 'This page must be opened over https:// (or localhost).';
@@ -164,6 +163,7 @@ function openFamily(data, { vault = null, slotId = null, pass = null, demo = fal
   const roles = data.keyRoles;
   state.canEdit = !slotId || !roles || Object.keys(roles).length === 0 || roles[slotId] === 'editor';
   state.editMode = edit && state.canEdit;
+  if (state.canEdit) startCloud();
   state.selected = null;
   state.editing = false;
   const s = state.s;
@@ -634,6 +634,8 @@ async function saveOnline() {
   if (!state.cloud.user) { toast(t('signInToSave')); return; }
   if (!state.cloud.role) { toast(t('notEditor')); return; }
   if (state.cloud.version === null) { toast(t('onlineUnavailable')); return; }
+  if (state.cloud.saving) return; // already saving: a second click must not start a second save
+  state.cloud.saving = true;
   const btn = $('#btnSaveOnline');
   btn.disabled = true;
   try {
@@ -655,7 +657,8 @@ async function saveOnline() {
       toast(`${t('saveFailed')} (${e.code || e.message})`, 8000);
     }
   } finally {
-    btn.disabled = false;
+    state.cloud.saving = false;
+    drawCloud();
   }
 }
 
@@ -670,14 +673,18 @@ function drawCloud() {
   $('#cloudSignedIn').hidden = !user;
   $('#cloudEmail').textContent = user ? user.email : '';
   $('#cloudNotEditor').hidden = !user || !!role;
-  $('#btnSaveOnline').disabled = !user || !role;
+  // Redrawing the page while a save is running must not re-enable the button.
+  $('#btnSaveOnline').disabled = !user || !role || !!state.cloud.saving;
   $('#btnEditors').hidden = role !== 'admin';
   $('#btnHistory').hidden = !role;
   $('#cloudInfo').textContent = version === null ? t('onlineUnavailable') : version ? t('onlineVersion', { n: version }) : '';
 }
 
+// Sign-in tracking loads Firebase's code, so it only starts for editors (not for viewers).
+let cloudStarted = false;
 async function startCloud() {
-  if (!cloud.cloudEnabled) return;
+  if (!cloud.cloudEnabled || cloudStarted) return;
+  cloudStarted = true;
   try {
     await cloud.onUser(async (u) => {
       state.cloud.user = u;
