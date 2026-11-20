@@ -4,6 +4,9 @@ export const UI_LANGS = ['en', 'ka', 'fr']; // display order when several are on
 
 const S = {
   en: {
+    currentPartner: 'Current partner',
+    currentPartnerHint: '★ = current partner: shown right next to them, with the solid line.',
+    formerPartner: 'former',
     birthdaysShort: 'Birthdays',
     display: 'Display',
     more: 'More',
@@ -136,6 +139,9 @@ const S = {
     startTreeHere: 'Start the tree here',
   },
   fr: {
+    currentPartner: 'Conjoint actuel',
+    currentPartnerHint: '★ = conjoint actuel : affiché juste à côté, avec la ligne pleine.',
+    formerPartner: 'ancien',
     birthdaysShort: 'Anniversaires',
     display: 'Affichage',
     more: 'Plus',
@@ -268,6 +274,9 @@ const S = {
     startTreeHere: 'Commencer l’arbre ici',
   },
   ka: {
+    currentPartner: 'ამჟამინდელი მეუღლე',
+    currentPartnerHint: '★ = ამჟამინდელი მეუღლე: ჩანს გვერდით, უწყვეტი ხაზით.',
+    formerPartner: 'ყოფილი',
     birthdaysShort: 'დაბადების დღეები',
     display: 'ჩვენება',
     more: 'მეტი',

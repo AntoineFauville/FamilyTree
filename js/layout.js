@@ -19,7 +19,7 @@ export function buildDescendants(fam, rootId, maxGen) {
   const seen = new Set();
   const build = (id, depth) => {
     seen.add(id);
-    const partners = fam.get(id).partners.filter((x) => fam.get(x));
+    const partners = fam.partnersOf(id).map((p) => p.id); // current partner first
     const node = { people: [id, ...partners], children: [], depth };
     if (depth + 1 < maxGen) {
       const kids = fam.childrenOf(id)

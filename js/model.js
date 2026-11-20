@@ -41,6 +41,8 @@ export function normalizePerson(p) {
     notes: p.notes || '',
     parents: Array.isArray(p.parents) ? [...new Set(p.parents)].slice(0, 2) : [],
     partners: Array.isArray(p.partners) ? [...new Set(p.partners)] : [],
+    // With several partners: the one they are with now (shown next to them, solid line).
+    currentPartner: p.currentPartner || '',
   };
 }
 
@@ -55,6 +57,7 @@ export class Family {
       p.partners = p.partners.filter((id) => id !== p.id && this.map.has(id));
     }
     for (const p of people) {
+      if (p.currentPartner && !p.partners.includes(p.currentPartner)) p.currentPartner = '';
       for (const q of p.partners) {
         const other = this.map.get(q);
         if (!other.partners.includes(p.id)) other.partners.push(p.id);
@@ -75,9 +78,27 @@ export class Family {
     return p.parents.map((x) => this.get(x)).filter(Boolean)
       .sort((a, b) => (a.gender === 'm' ? -1 : 0) - (b.gender === 'm' ? -1 : 0));
   }
+  // Partners in display order: the current partner first, then the others as entered.
   partnersOf(id) {
     const p = this.get(id);
-    return p ? p.partners.map((x) => this.get(x)).filter(Boolean) : [];
+    if (!p) return [];
+    const list = p.partners.map((x) => this.get(x)).filter(Boolean);
+    return list.sort((a, b) => (b.id === p.currentPartner) - (a.id === p.currentPartner));
+  }
+
+  // Mark (or unmark, with null) someone's current partner; it is mutual.
+  setCurrentPartner(id, partnerId) {
+    const p = this.get(id);
+    if (!p) return;
+    const old = p.currentPartner && this.get(p.currentPartner);
+    if (old && old.currentPartner === id) old.currentPartner = '';
+    p.currentPartner = partnerId || '';
+    const q = partnerId && this.get(partnerId);
+    if (q) {
+      const theirOld = q.currentPartner && this.get(q.currentPartner);
+      if (theirOld && theirOld.currentPartner === q.id) theirOld.currentPartner = '';
+      q.currentPartner = id;
+    }
   }
   siblingsOf(id) {
     const p = this.get(id);
@@ -99,6 +120,7 @@ export class Family {
     for (const p of this.people) {
       p.parents = p.parents.filter((x) => x !== id);
       p.partners = p.partners.filter((x) => x !== id);
+      if (p.currentPartner === id) p.currentPartner = '';
     }
     this.reindex();
   }
@@ -177,6 +199,8 @@ export class Family {
     const pa = this.get(a), pb = this.get(b);
     if (pa) pa.partners = pa.partners.filter((x) => x !== b);
     if (pb) pb.partners = pb.partners.filter((x) => x !== a);
+    if (pa && pa.currentPartner === b) pa.currentPartner = '';
+    if (pb && pb.currentPartner === a) pb.currentPartner = '';
   }
 
   toJSON() { return this.data; }

@@ -44,7 +44,11 @@ function renderView(box, p, ctx) {
 
   const rel = (key, list) => list.length ? `
     <div class="d-rel"><h3>${esc(t(key))}</h3><div class="chips">
-      ${list.map((q) => `<span class="chip" data-go="${q.id}">${esc(nameOf(ctx, q))}</span>`).join('')}
+      ${list.map((q) => {
+        // Several partners: ★ before the current one.
+        const star = key === 'partners' && list.length > 1 && p.currentPartner === q.id ? '★ ' : '';
+        return `<span class="chip" data-go="${q.id}" ${star ? `title="${esc(t('currentPartner'))}"` : ''}>${star}${esc(nameOf(ctx, q))}</span>`;
+      }).join('')}
     </div></div>` : '';
 
   box.innerHTML = `
@@ -91,8 +95,13 @@ function renderForm(box, p, ctx) {
     return `
       <div class="d-rel"><h3>${esc(t(kind))}</h3>
         <div class="chips">
-          ${list.map((q) => `<span class="chip" data-go="${q.id}">${esc(nameOf(ctx, q))}<button class="x" data-unlink="${kind}" data-id="${q.id}" title="${esc(t('remove'))}">×</button></span>`).join('')}
+          ${list.map((q) => `<span class="chip${kind === 'partners' && p.currentPartner === q.id ? ' on' : ''}" data-go="${q.id}">${
+            // Several partners: a star marks the current one (click to set or clear).
+            kind === 'partners' && list.length > 1
+              ? `<button class="star" data-current="${q.id}" title="${esc(t('currentPartner'))}">${p.currentPartner === q.id ? '★' : '☆'}</button>`
+              : ''}${esc(nameOf(ctx, q))}<button class="x" data-unlink="${kind}" data-id="${q.id}" title="${esc(t('remove'))}">×</button></span>`).join('')}
         </div>
+        ${kind === 'partners' && list.length > 1 ? `<p class="muted small">${esc(t('currentPartnerHint'))}</p>` : ''}
         ${canAdd ? `<select data-link="${kind}">
           <option value="">${esc(t('addLink'))}</option>
           <option value="__new">${esc(t('newPerson'))}</option>
@@ -215,6 +224,15 @@ function renderForm(box, p, ctx) {
   box.onchange = (e) => { onChange(e); showProblems(); };
 
   box.onclick = (e) => {
+    const star = e.target.closest('[data-current]');
+    if (star) {
+      e.stopPropagation();
+      const id = star.dataset.current;
+      fam.setCurrentPartner(p.id, p.currentPartner === id ? null : id);
+      ctx.changed();
+      renderDetails(box, ctx);
+      return;
+    }
     const un = e.target.closest('[data-unlink]');
     if (un) {
       e.stopPropagation();
