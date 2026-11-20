@@ -15,21 +15,45 @@ export function cardHeight(lines) {
 }
 
 // The tree from a starting person: them (and partners), their children, grandchildren...
+// Each unit is a row of cards: the person, then each partner. A partner's own other
+// partners (e.g. a grandmother's second husband) come right after that partner.
+// rel[i] says who card i is joined to: { of: index of the card it is joined to,
+// order: which of the main person's partners it is (-1 for a partner's partner) }.
 export function buildDescendants(fam, rootId, maxGen) {
   const seen = new Set();
   const build = (id, depth) => {
     seen.add(id);
-    const partners = fam.partnersOf(id).map((p) => p.id); // current partner first
-    const node = { people: [id, ...partners], children: [], depth };
+    const people = [id];
+    const rel = [null];
+    fam.partnersOf(id).forEach((q, k) => { // current partner first
+      const qi = people.length;
+      people.push(q.id);
+      rel.push({ of: 0, order: k });
+      for (const r of fam.partnersOf(q.id)) {
+        if (r.id === id || people.includes(r.id) || seen.has(r.id)) continue;
+        people.push(r.id);
+        rel.push({ of: qi, order: -1 });
+      }
+    });
+    const node = { people, rel, children: [], depth };
     if (depth + 1 < maxGen) {
-      const kids = fam.childrenOf(id)
-        .filter((k) => !seen.has(k.id))
-        .map((k) => {
-          const via = k.parents.find((x) => x !== id) || null;
-          const idx = via ? partners.indexOf(via) : -1;
-          return { k, via, order: idx < 0 ? 999 : idx };
-        })
-        .sort((a, b) => a.order - b.order); // already sorted by birth inside each group
+      const kids = [];
+      const added = new Set();
+      const addKid = (k, via) => {
+        if (seen.has(k.id) || added.has(k.id)) return;
+        added.add(k.id);
+        const idx = via ? people.indexOf(via) : -1;
+        kids.push({ k, via, order: idx < 0 ? 999 : idx });
+      };
+      // The person's children (with whichever partner)...
+      for (const k of fam.childrenOf(id)) addKid(k, k.parents.find((x) => x !== id) || null);
+      // ...and children a partner had with their other partner (half-brothers and sisters).
+      rel.forEach((r, i) => {
+        if (!r || r.of === 0) return;
+        const q = people[r.of], other = people[i];
+        for (const k of fam.childrenOf(other)) if (k.parents.includes(q) && !k.parents.includes(id)) addKid(k, other);
+      });
+      kids.sort((a, b) => a.order - b.order); // already sorted by birth inside each group
       for (const { k, via } of kids) {
         if (seen.has(k.id)) continue;
         const child = build(k.id, depth + 1);
@@ -92,33 +116,41 @@ export function layoutTree(root, cardH) {
     n.ux = ux;
     const y = n.y;
 
-    // Several partners: each couple gets its own line style (solid, dashed, dotted...),
-    // used for the line joining the couple and for the lines down to their children.
-    const several = n.people.length > 2;
-    const styleOf = (j) => (several && j > 0 ? LINE_STYLES[(j - 1) % LINE_STYLES.length] : 'solid');
-    // Each partner's line starts at the main person and runs (behind the cards in between)
-    // to that partner. With several partners the lines are stacked a few pixels apart,
-    // so in the gaps between cards you see them one above the other.
-    const partnersCount = n.people.length - 1;
-    const lineY = (j) => y + cardH / 2 + (several ? (j - 1 - (partnersCount - 1) / 2) * PARTNER_LINE_GAP : 0);
+    // The main person's partners: with several, each couple gets its own line style
+    // (solid, dashed, dotted...) for the line joining them and the lines to their children.
+    // Each line starts at the main person and runs (behind the cards in between) to that
+    // partner; the lines are stacked a few pixels apart so they can be told apart.
+    const mainPartners = n.rel.filter((r) => r && r.of === 0).length;
+    const stacked = mainPartners > 1;
+    const styleOf = (i) => {
+      const r = n.rel[i];
+      return r && r.of === 0 && stacked ? LINE_STYLES[r.order % LINE_STYLES.length] : 'solid';
+    };
+    const lineY = (i) => {
+      const r = n.rel[i];
+      if (!stacked || !r) return y + cardH / 2;
+      if (r.of === 0) return y + cardH / 2 + (r.order - (mainPartners - 1) / 2) * PARTNER_LINE_GAP;
+      return y + cardH / 2 + ((mainPartners - 1) / 2 + 1) * PARTNER_LINE_GAP; // a partner's partner: just below
+    };
     const STEP = stepOf(n);
 
     n.people.forEach((pid, i) => {
       cards.push({ key: keyFor(pid), pid, x: ux + i * STEP, y, depth: n.depth, partner: i > 0 });
       if (i > 0) {
-        edges.push({ cls: `partner ${styleOf(i)}`, d: `M${ux + CARD_W},${lineY(i)}H${ux + i * STEP}` });
+        const from = n.rel[i] ? n.rel[i].of : 0;
+        edges.push({ cls: `partner ${styleOf(i)}`, d: `M${ux + from * STEP + CARD_W},${lineY(i)}H${ux + i * STEP}` });
       }
     });
 
-    // Lines down to children, starting between the parents when both are shown.
+    // Lines down to children, starting from their parents' line when both are shown.
     for (const c of n.children) {
       const j = c.via ? n.people.indexOf(c.via) : -1;
       let ax, ay;
       if (j > 0) { ax = ux + j * STEP - gapOf(n) / 2; ay = lineY(j); }
       else { ax = ux + CARD_W / 2; ay = y + cardH; }
-      // With several partners, each couple's horizontal line sits a little lower
+      // With several couples in a row, each couple's horizontal line sits a little lower
       // than the previous one, so the lines don't run on top of each other.
-      const offset = several ? (j > 0 ? (j - 1) * 8 : -8) : 0;
+      const offset = n.people.length > 2 ? Math.min(24, j > 0 ? (j - 1) * 8 : -8) : 0;
       const midY = y + cardH + LEVEL_GAP / 2 + offset;
       edges.push({ cls: `child ${styleOf(j)}`, d: `M${ax},${ay}V${midY}H${c.ux + CARD_W / 2}V${c.y}` });
     }
