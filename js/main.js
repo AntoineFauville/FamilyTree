@@ -6,6 +6,7 @@ import { buildDescendants, layoutTree, cardHeight, CARD_W } from './layout.js';
 import { createTreeView } from './render.js';
 import { renderDetails } from './details.js';
 import { sampleFamily } from './sample.js';
+import * as cloud from './cloud.js';
 
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
@@ -27,6 +28,9 @@ const state = {
   editMode: false,
   editing: false,
   selected: null,
+  // Online editing (Firebase): version this browser started from (null = not loaded),
+  // signed-in user and their role ('admin' | 'editor' | null).
+  cloud: { version: null, user: null, role: null },
   // person: who we look from (highlighted); head: the ancestor the tree starts from.
   s: { uiLangs: [guessLang()], theme: 'auto', langs: { en: true, ka: false, fr: false }, person: null, head: null, family: '' },
 };
@@ -106,6 +110,8 @@ async function boot() {
   setLangs(state.s.uiLangs);
   wireStatic();
   syncLangSegs();
+  drawCloud();
+  startCloud();
 
   if (!window.crypto || !crypto.subtle) {
     $('#passError').textContent = 'This page must be opened over https:// (or localhost).';
@@ -114,10 +120,24 @@ async function boot() {
   }
 
   let file = null;
-  try {
-    const r = await fetch(DATA_URL, { cache: 'no-store' });
-    if (r.ok) file = await r.json();
-  } catch { /* no file yet */ }
+  if (cloud.cloudEnabled) {
+    // Back from a sign-in email: finish signing in (the family code is not in that link).
+    try {
+      if (await cloud.completeEmailLink(() => prompt(t('confirmEmail')))) toast(t('signedInNowOpen'), 8000);
+    } catch (e) { console.warn(e); toast(t('signInFailed')); }
+    // The online tree is the current one; the GitHub copy is the fallback.
+    try {
+      const online = await cloud.loadTree();
+      state.cloud.version = online ? online.version : 0;
+      if (online && isEncryptedFile(online.file)) file = online.file;
+    } catch (e) { console.warn('online tree unavailable, using the GitHub copy', e); }
+  }
+  if (!file) {
+    try {
+      const r = await fetch(DATA_URL, { cache: 'no-store' });
+      if (r.ok) file = await r.json();
+    } catch { /* no file yet */ }
+  }
 
   if (isEncryptedFile(file)) {
     state.encFile = file;
@@ -235,6 +255,7 @@ function refresh({ fit = false } = {}) {
   $$('[data-name-lang]').forEach((c) => { c.checked = !!s.langs[c.dataset.nameLang]; });
   $('#editSection').hidden = !state.canEdit;
   $('#toolEdit').hidden = !state.canEdit;
+  drawCloud();
   $('#editToggle').checked = state.editMode;
   $('#editTools').hidden = !state.editMode;
   $('#demoBadge').hidden = !state.demo;
@@ -578,21 +599,202 @@ async function onAddKey(e) {
 
 // ---- Saving & sharing
 
-async function saveEncrypted() {
-  if (!state.vault.slots.length) { toast(t('needKey')); openKeys(); return; }
+// The encrypted file for the current tree (null if there is no code to lock it with yet).
+async function sealCurrent() {
+  if (!state.vault.slots.length) { toast(t('needKey')); openKeys(); return null; }
   dropAllEmpty();
   refresh();
   const ids = new Set(state.vault.slots.map((s) => s.id));
   const keyLabels = Object.fromEntries(Object.entries(state.keyLabels).filter(([id]) => ids.has(id)));
   const keyRoles = Object.fromEntries(Object.entries(state.keyRoles).filter(([id]) => ids.has(id)));
   // The view you save with is what people see first when they open the tree.
-  const file = await sealFile(state.vault, {
+  return sealFile(state.vault, {
     ...state.fam.toJSON(), startPerson: state.s.person, startHead: state.s.head, keyLabels, keyRoles,
   });
-  download('family.enc.json', JSON.stringify(file));
+}
+
+function markSaved() {
   state.dirty = false;
   $('#dirtyBadge').hidden = true;
-  toast(t('savedHelp'), 8000);
+}
+
+// Save as a file (to publish with publish.cmd, or keep as a backup).
+async function saveEncrypted() {
+  const file = await sealCurrent();
+  if (!file) return;
+  download('family.enc.json', JSON.stringify(file));
+  if (!cloud.cloudEnabled) markSaved(); // online, only Save online counts as saved
+  toast(t(cloud.cloudEnabled ? 'downloadedBackup' : 'savedHelp'), 8000);
+}
+
+// ---- Online editing (Firebase)
+
+// Save online: live for everyone straight away.
+async function saveOnline() {
+  if (!state.cloud.user) { toast(t('signInToSave')); return; }
+  if (!state.cloud.role) { toast(t('notEditor')); return; }
+  if (state.cloud.version === null) { toast(t('onlineUnavailable')); return; }
+  const btn = $('#btnSaveOnline');
+  btn.disabled = true;
+  try {
+    const file = await sealCurrent();
+    if (!file) return;
+    state.cloud.version = await cloud.saveTree(file, state.cloud.version);
+    markSaved();
+    drawCloud();
+    toast(t('savedOnline'), 6000);
+  } catch (e) {
+    if (e.message === 'conflict') {
+      // Someone else saved since this page was opened: don't overwrite their work.
+      if (confirm(t('conflict'))) {
+        const file = await sealCurrent();
+        if (file) download('family.enc.json', JSON.stringify(file));
+      }
+    } else {
+      console.warn(e);
+      toast(`${t('saveFailed')} (${e.code || e.message})`, 8000);
+    }
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function drawCloud() {
+  const on = cloud.cloudEnabled;
+  const { user, role, version } = state.cloud;
+  $('#cloudBox').hidden = !on;
+  $('#fileSaveBox').hidden = on;
+  $('#btnDownload').hidden = !on;
+  if (!on) return;
+  $('#cloudSignedOut').hidden = !!user;
+  $('#cloudSignedIn').hidden = !user;
+  $('#cloudEmail').textContent = user ? user.email : '';
+  $('#cloudNotEditor').hidden = !user || !!role;
+  $('#btnSaveOnline').disabled = !user || !role;
+  $('#btnEditors').hidden = role !== 'admin';
+  $('#btnHistory').hidden = !role;
+  $('#cloudInfo').textContent = version === null ? t('onlineUnavailable') : version ? t('onlineVersion', { n: version }) : '';
+}
+
+async function startCloud() {
+  if (!cloud.cloudEnabled) return;
+  try {
+    await cloud.onUser(async (u) => {
+      state.cloud.user = u;
+      state.cloud.role = u ? await cloud.myRole() : null;
+      drawCloud();
+    });
+  } catch (e) { console.warn('sign-in unavailable', e); }
+}
+
+// ---- Editors list (admins)
+
+async function openEditors() {
+  $('#editorError').hidden = true;
+  $('#editorsDialog').showModal();
+  await drawEditors();
+}
+
+async function drawEditors() {
+  const list = $('#editorList');
+  list.innerHTML = `<li class="muted">…</li>`;
+  try {
+    const editors = await cloud.listEditors();
+    list.innerHTML = '';
+    for (const ed of editors) {
+      const li = document.createElement('li');
+      const name = document.createElement('span');
+      name.className = 'k-name';
+      name.textContent = ed.email;
+      const role = document.createElement('select');
+      role.className = 'k-role';
+      role.add(new Option(t('roleEditor'), 'editor'));
+      role.add(new Option(t('isAdmin'), 'admin'));
+      role.value = ed.admin ? 'admin' : 'editor';
+      role.onchange = async () => {
+        if (ed.email === state.cloud.user?.email && role.value !== 'admin' && !confirm(t('dropOwnAdmin'))) { role.value = 'admin'; return; }
+        try { await cloud.setEditor(ed.email, role.value === 'admin'); } catch (e) { showEditorError(e); }
+        if (ed.email === state.cloud.user?.email) { state.cloud.role = await cloud.myRole(); drawCloud(); }
+        drawEditors();
+      };
+      const rm = document.createElement('button');
+      rm.type = 'button';
+      rm.className = 'danger';
+      rm.textContent = '×';
+      rm.title = t('remove');
+      rm.onclick = async () => {
+        if (ed.email === state.cloud.user?.email) { showEditorError(new Error(t('cantRemoveSelf'))); return; }
+        if (!confirm(t('confirmRemoveEditor', { email: ed.email }))) return;
+        try { await cloud.removeEditor(ed.email); } catch (e) { showEditorError(e); }
+        drawEditors();
+      };
+      li.append(name, role, rm);
+      list.appendChild(li);
+    }
+  } catch (e) { showEditorError(e); }
+}
+
+function showEditorError(e) {
+  $('#editorError').textContent = e.message || String(e);
+  $('#editorError').hidden = false;
+}
+
+async function onAddEditor(e) {
+  e.preventDefault();
+  const email = $('#editorEmail').value.trim().toLowerCase();
+  if (!email) return;
+  try {
+    await cloud.setEditor(email, $('#editorAdmin').checked);
+    $('#editorEmail').value = '';
+    $('#editorAdmin').checked = false;
+    $('#editorError').hidden = true;
+  } catch (err) { showEditorError(err); }
+  drawEditors();
+}
+
+// ---- History: every version saved online; load an older one to undo a mistake.
+
+async function openHistory() {
+  const list = $('#historyList');
+  list.innerHTML = `<li class="muted">…</li>`;
+  $('#historyDialog').showModal();
+  try {
+    const entries = await cloud.listHistory(30);
+    list.innerHTML = '';
+    for (const h of entries) {
+      const li = document.createElement('li');
+      const info = document.createElement('span');
+      info.className = 'k-name';
+      const when = h.savedAt ? h.savedAt.toLocaleString(getLang() === 'ka' ? 'ka-GE' : getLang() === 'fr' ? 'fr-FR' : 'en-GB') : '';
+      info.textContent = `v${h.version} · ${when}`;
+      const by = document.createElement('span');
+      by.className = 'k-link';
+      by.textContent = h.savedBy || '';
+      const load = document.createElement('button');
+      load.type = 'button';
+      load.textContent = t('restore');
+      load.disabled = h.version === state.cloud.version;
+      load.onclick = async () => {
+        if (state.dirty && !confirm(t('leaveWarning'))) return;
+        try {
+          const { data } = await openFile(h.file, state.pass);
+          const keep = { vault: state.vault, keyLabels: state.keyLabels, keyRoles: state.keyRoles };
+          state.fam = new Family(data);
+          Object.assign(state, keep); // keep the current codes; only the people change
+          state.dirty = true;
+          $('#historyDialog').close();
+          refresh({ fit: true });
+          toast(t('restored', { n: h.version }), 8000);
+        } catch (err) { toast(`${t('saveFailed')} (${err.message})`); }
+      };
+      li.append(info, by, load);
+      list.appendChild(li);
+    }
+    if (!entries.length) list.innerHTML = `<li class="muted">—</li>`;
+  } catch (e) {
+    list.innerHTML = '';
+    toast(`${t('saveFailed')} (${e.code || e.message})`);
+  }
 }
 
 function copyShareLink() {
@@ -730,6 +932,25 @@ function wireStatic() {
   $('#btnAdd').onclick = addPerson;
   $('#btnAddFirst').onclick = addPerson;
   $('#btnSave').onclick = saveEncrypted;
+  $('#btnDownload').onclick = saveEncrypted;
+
+  // Online editing
+  $('#btnSaveOnline').onclick = saveOnline;
+  $('#btnGoogle').onclick = async () => {
+    try { await cloud.signInWithGoogle(); } catch (e) { if (e.code !== 'auth/popup-closed-by-user') toast(`${t('signInFailed')} (${e.code || e.message})`); }
+  };
+  $('#emailLinkForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = $('#signInEmail').value.trim();
+    try { await cloud.sendEmailLink(email); toast(t('linkSent', { email }), 10000); }
+    catch (err) { toast(`${t('signInFailed')} (${err.code || err.message})`, 8000); }
+  });
+  $('#btnSignOut').onclick = () => cloud.signOutUser();
+  $('#btnEditors').onclick = openEditors;
+  $('#editorAddForm').addEventListener('submit', onAddEditor);
+  $('#editorsDone').onclick = () => $('#editorsDialog').close();
+  $('#btnHistory').onclick = openHistory;
+  $('#historyDone').onclick = () => $('#historyDialog').close();
   $('#btnKeys').onclick = openKeys;
   $('#keyAddForm').addEventListener('submit', onAddKey);
   $('#keysDone').onclick = () => $('#keysDialog').close();

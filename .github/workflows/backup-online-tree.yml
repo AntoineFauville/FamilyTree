@@ -1,0 +1,47 @@
+# Once a day, copy the online (encrypted) family tree from Firebase into this repository,
+# as data/family.enc.json. That keeps a second copy, and keeps the website's fallback
+# up to date if Firebase is ever unreachable. The file stays encrypted: no family code here.
+name: Back up the online family tree
+
+on:
+  schedule:
+    - cron: '17 3 * * *'   # every day at 03:17 UTC
+  workflow_dispatch:        # can also be started by hand from the Actions tab
+
+permissions:
+  contents: write
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download the online tree
+        run: |
+          node --input-type=module -e "
+            import { writeFileSync, readFileSync } from 'node:fs';
+            const { firebaseConfig: c } = await import('./js/firebase-config.js');
+            if (!c) { console.log('Online editing is not set up; nothing to back up.'); process.exit(0); }
+            const url = 'https://firestore.googleapis.com/v1/projects/' + c.projectId
+              + '/databases/(default)/documents/trees/main?key=' + c.apiKey;
+            const r = await fetch(url);
+            if (r.status === 404) { console.log('No online tree yet.'); process.exit(0); }
+            if (!r.ok) { console.error('Download failed: HTTP ' + r.status); process.exit(1); }
+            const text = (await r.json()).fields.file.stringValue;
+            const file = JSON.parse(text);
+            if (file.format !== 'familytree-encrypted') { console.error('Not an encrypted family file; not saved.'); process.exit(1); }
+            writeFileSync('data/family.enc.json', JSON.stringify(file));
+          "
+
+      - name: Commit if it changed
+        run: |
+          if git diff --quiet -- data/family.enc.json; then
+            echo "Already up to date."
+          else
+            git config user.name "family-tree-backup"
+            git config user.email "family-tree-backup@users.noreply.github.com"
+            git add data/family.enc.json
+            git commit -m "Daily backup of the online family tree"
+            git push
+          fi

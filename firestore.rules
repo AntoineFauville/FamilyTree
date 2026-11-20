@@ -1,0 +1,52 @@
+rules_version = '2';
+
+// Security rules for the family tree database (Firebase Firestore).
+// Paste this into Firebase console > Firestore Database > Rules, then Publish.
+//
+// - trees/main holds the ENCRYPTED family tree: anyone may read it (it is unreadable
+//   without a family code), only people on the editors list may save it.
+// - editors/{email} is the list of people allowed to save; admins can change the list.
+// - trees/main/history keeps every saved version, so a mistake can be undone.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+    function myEmail() {
+      return request.auth.token.email.lower();
+    }
+    function isEditor() {
+      return signedIn() && exists(/databases/$(database)/documents/editors/$(myEmail()));
+    }
+    function isAdmin() {
+      return isEditor()
+        && get(/databases/$(database)/documents/editors/$(myEmail())).data.admin == true;
+    }
+
+    match /trees/{tree} {
+      allow read: if true;
+      // Each save must be exactly the next version (so two editors can't overwrite
+      // each other by accident) and must say who saved it.
+      allow create: if isEditor()
+        && request.resource.data.version == 1
+        && request.resource.data.updatedBy == myEmail();
+      allow update: if isEditor()
+        && request.resource.data.version == resource.data.version + 1
+        && request.resource.data.updatedBy == myEmail();
+      allow delete: if false;
+
+      match /history/{entry} {
+        allow read: if isEditor();
+        allow create: if isEditor() && request.resource.data.savedBy == myEmail();
+        allow update, delete: if false;
+      }
+    }
+
+    match /editors/{email} {
+      allow read: if isEditor();
+      allow create, update, delete: if isAdmin();
+    }
+  }
+}
