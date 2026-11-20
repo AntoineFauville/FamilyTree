@@ -1,6 +1,6 @@
 // Interface translations: English, French, Georgian.
 
-export const UI_LANGS = ['en', 'ka', 'fr']; // display order when several are on
+export const UI_LANGS = ['en', 'fr', 'ka']; // display order when several are on
 
 const S = {
   en: {

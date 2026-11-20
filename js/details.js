@@ -70,7 +70,7 @@ function renderView(box, p, ctx) {
     const n = fullNameLong(p, l);
     if (n && !longNames.includes(n)) longNames.push(n);
   }
-  if (!longNames.length) longNames.push(...nameLines(p, { en: 1, ka: 1, fr: 1 }));
+  if (!longNames.length) longNames.push(...nameLines(p, { fr: 1, ka: 1 }));
 
   box.innerHTML = `
     <div class="d-head">

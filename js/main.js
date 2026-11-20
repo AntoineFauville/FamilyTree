@@ -33,7 +33,7 @@ const state = {
   // signed-in user and their role ('admin' | 'editor' | null).
   cloud: { version: null, user: null, role: null, saving: false },
   // person: who we look from (highlighted); head: the ancestor the tree starts from.
-  s: { uiLangs: [guessLang()], theme: 'auto', langs: { en: true, ka: false, fr: false }, person: null, head: null, family: '' },
+  s: { uiLangs: [guessLang()], theme: 'auto', langs: { fr: true, ka: false }, person: null, head: null, family: '' },
 };
 
 function guessLang() {
@@ -51,6 +51,9 @@ function loadSettings() {
     state.s.ui = undefined;
     // Older versions had a "root" person and ancestors/descendants modes.
     if (saved.root && !saved.person) state.s.person = saved.root;
+    // Names are no longer written in English: English names on becomes French names on.
+    if (state.s.langs.en) state.s.langs.fr = true;
+    state.s.langs = { fr: !!state.s.langs.fr, ka: !!state.s.langs.ka };
     state.s.root = state.s.mode = state.s.gens = undefined;
   } catch { /* storage unavailable */ }
 }
@@ -197,7 +200,7 @@ let treeView;
 
 function nameOpts() {
   const l = state.s.langs;
-  return (l.en || l.ka || l.fr) ? l : { en: true };
+  return (l.fr || l.ka) ? { fr: !!l.fr, ka: !!l.ka } : { fr: true };
 }
 
 // ---- Perspective: a person, and the ancestor their tree starts from.
@@ -929,8 +932,8 @@ const fileWord = (s) => (s || '').normalize('NFD').replace(/\p{M}/gu, '').replac
 
 function pdfFileName() {
   const p = state.fam.get(state.s.person), h = state.fam.get(state.s.head);
-  const first = (x) => x ? (x.first.en || x.first.fr || x.first.ka) : '';
-  const last = (x) => x ? (x.last.en || x.last.fr || x.last.ka) : '';
+  const first = (x) => x ? (x.first.fr || x.first.ka) : '';
+  const last = (x) => x ? (x.last.fr || x.last.ka) : '';
   const who = fileWord(first(p)) || 'Person';
   const from = fileWord(first(h) + last(h)) || 'Family';
   return `familytree${who}To${from}`;

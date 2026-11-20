@@ -1,11 +1,13 @@
 // Family data model.
-// A person: { id, first: {en, ka, fr}, last: {en, ka, fr}, gender: 'm'|'f'|'',
+// A person: { id, first: {fr, ka}, last: {fr, ka}, middle: {fr, ka}, gender: 'm'|'f'|'',
 //             birth, death, deceased, notes, parents: [id, id], partners: [id, ...] }
+// Names are written in French (Latin letters) and Georgian. Older files also had an
+// English name: it is moved into the French one when that is empty.
 // Dates are strings: 'YYYY-MM-DD', 'YYYY-MM' or 'YYYY'.
 
 import { compareBirth } from './dates.js';
 
-export const NAME_LANGS = ['en', 'ka', 'fr'];
+export const NAME_LANGS = ['fr', 'ka'];
 
 export function newId() {
   const b = crypto.getRandomValues(new Uint8Array(5));
@@ -21,21 +23,25 @@ function splitFullName(full) {
 }
 
 export function normalizePerson(p) {
-  const first = {}, last = {};
-  for (const l of NAME_LANGS) {
+  // Read every language that may be in the file (including the old English one)...
+  const first = {}, last = {}, middle = {};
+  for (const l of ['en', 'fr', 'ka']) {
     if (p.first || p.last) {
-      first[l] = (p.first && p.first[l]) || '';
-      last[l] = (p.last && p.last[l]) || '';
+      first[l] = ((p.first && p.first[l]) || '').trim();
+      last[l] = ((p.last && p.last[l]) || '').trim();
     } else {
       ({ first: first[l], last: last[l] } = splitFullName(p.name && p.name[l]));
     }
+    middle[l] = ((p.middle && p.middle[l]) || '').trim();
   }
+  // ...then keep French and Georgian, filling empty French fields from English.
+  const keep = (o) => ({ fr: o.fr || o.en || '', ka: o.ka || '' });
   return {
     id: p.id || newId(),
-    first,
-    last,
-    // Other first names (middle names), per language; shown in the details, not on the cards.
-    middle: { en: (p.middle && p.middle.en) || '', ka: (p.middle && p.middle.ka) || '', fr: (p.middle && p.middle.fr) || '' },
+    first: keep(first),
+    last: keep(last),
+    // Other first names (middle names); shown in the details, not on the cards.
+    middle: keep(middle),
     gender: p.gender === 'm' || p.gender === 'f' ? p.gender : '',
     birth: p.birth || '',
     death: p.death || '',
@@ -215,9 +221,7 @@ export class Family {
 // Identical names are shown once. Falls back to any name if none of the enabled ones exist.
 // Full name with the other first names: "Antoine Jean Marie Fauville" (for the details panel).
 export function fullNameLong(p, lang) {
-  // English and French use the same alphabet: if one has no other first names, use the other's.
-  const middle = p.middle[lang] || (lang === 'en' ? p.middle.fr : lang === 'fr' ? p.middle.en : '');
-  return [p.first[lang], middle, p.last[lang]].map((s) => (s || '').trim()).filter(Boolean).join(' ');
+  return [p.first[lang], p.middle[lang], p.last[lang]].map((s) => (s || '').trim()).filter(Boolean).join(' ');
 }
 
 export function fullName(p, lang) {
