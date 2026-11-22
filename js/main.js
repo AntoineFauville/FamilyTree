@@ -1,7 +1,7 @@
 import { t, tFirst, setLangs, getLang, getLangs, UI_LANGS } from './i18n.js';
 import { Family, cardNames, displayName, familyGroups, familyKey, familyHead, problemsOf, isEmptyPerson } from './model.js';
 import { yearsLabel, nextBirthday, formatDayMonth, age } from './dates.js';
-import { openFile, sealFile, openBox, createVault, addKey, removeKey, isEncryptedFile, MIN_KEY_LENGTH } from './crypto.js';
+import { openFile, sealFile, openBox, createVault, addKey, removeKey, keyOpens, randomCode, rotateVault, normalizeKey, isEncryptedFile, MIN_KEY_LENGTH } from './crypto.js';
 import { buildDescendants, layoutTree, cardHeight, CARD_W } from './layout.js';
 import { createTreeView } from './render.js';
 import { renderDetails } from './details.js';
@@ -74,8 +74,8 @@ function toast(msg, ms = 3500) {
   toastTimer = setTimeout(() => el.classList.remove('show'), ms);
 }
 
-function download(name, text) {
-  const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+function download(name, text, type = 'application/json') {
+  const url = URL.createObjectURL(new Blob([text], { type }));
   const a = Object.assign(document.createElement('a'), { href: url, download: name });
   document.body.appendChild(a);
   a.click();
@@ -202,6 +202,8 @@ function openFamily(data, { vault = null, slotId = null, pass = null, demo = fal
   state.keyStarts = { ...(data.keyStarts || {}) };
   state.setupApplied = [...(data.setupApplied || [])];
   state.known = slotId ? { [slotId]: pass } : {};
+  state.slotId = slotId;
+  state.rotated = false;
   state.pass = pass;
   state.demo = demo;
   state.dirty = false;
@@ -729,6 +731,75 @@ async function onAddKey(e) {
   $('#keyLabel').focus();
 }
 
+// ---- Replace all codes: new encryption key and new codes (e.g. if a code became public).
+
+let rotateRows = []; // [{ id, name, input }]
+let rotateKept = ''; // the exact links the user last copied or downloaded
+
+function openRotate() {
+  if (cloud.cloudEnabled && !state.cloud.role) { showKeyError(t('signInToSave')); return; }
+  const list = $('#rotateList');
+  list.innerHTML = '';
+  rotateKept = '';
+  rotateRows = state.vault.slots.map((slot, i) => {
+    const li = document.createElement('li');
+    const name = document.createElement('span');
+    name.className = 'k-name';
+    name.textContent = `${keyName(slot.id, i)} (${t(roleOf(slot.id) === 'editor' ? 'roleEditor' : 'roleViewer')})`;
+    const input = document.createElement('input');
+    input.value = randomCode();
+    input.autocomplete = 'off';
+    input.spellcheck = false;
+    input.oninput = drawRotate;
+    li.append(name, input);
+    list.appendChild(li);
+    return { id: slot.id, name: name.textContent, input };
+  });
+  $('#rotateError').hidden = true;
+  drawRotate();
+  $('#keysDialog').close();
+  $('#rotateDialog').showModal();
+}
+
+const rotateLinks = () => rotateRows.map((r) => `${r.name}\n${shareLink(r.input.value.trim())}`).join('\n\n');
+
+// The button only works once exactly these codes have been kept somewhere.
+function drawRotate() {
+  $('#rotateApply').disabled = rotateKept !== rotateLinks();
+}
+
+function rotateError(msg) {
+  $('#rotateError').textContent = msg;
+  $('#rotateError').hidden = !msg;
+}
+
+async function applyRotate() {
+  const entries = rotateRows.map((r) => ({ id: r.id, code: r.input.value.trim() }));
+  if (entries.some((e) => normalizeKey(e.code).length < MIN_KEY_LENGTH)) { rotateError(t('keyTooShort')); return; }
+  if (new Set(entries.map((e) => normalizeKey(e.code))).size !== entries.length) { rotateError(t('rotateSame')); return; }
+  const btn = $('#rotateApply');
+  btn.disabled = true;
+  rotateError(t('unlocking'));
+  for (const e of entries) {
+    if (await keyOpens(state.vault, e.code)) { rotateError(t('rotateOld', { code: e.code })); drawRotate(); return; }
+  }
+  fixRoles();
+  const { vault, ids } = await rotateVault(entries);
+  const moved = (o) => Object.fromEntries(Object.entries(o).filter(([id]) => ids[id]).map(([id, v]) => [ids[id], v]));
+  state.keyLabels = moved(state.keyLabels);
+  state.keyRoles = moved(state.keyRoles);
+  state.keyStarts = moved(state.keyStarts);
+  state.known = Object.fromEntries(entries.map((e) => [ids[e.id], e.code]));
+  const mine = entries.find((e) => e.id === state.slotId);
+  if (mine) { state.pass = mine.code; state.slotId = state.viewKey = ids[mine.id]; }
+  state.vault = vault;
+  state.rotated = true;
+  rotateError('');
+  $('#rotateDialog').close();
+  changed();
+  toast(t('rotateDone'), 12000);
+}
+
 // ---- Saving & sharing
 
 // The encrypted file for the current tree (null if there is no code to lock it with yet).
@@ -777,6 +848,11 @@ async function saveOnline() {
     if (!file) return;
     state.cloud.version = await cloud.saveTree(file, state.cloud.version);
     markSaved();
+    if (state.rotated) {
+      // The codes were replaced: the address must not keep the old one.
+      state.rotated = false;
+      if (state.pass) history.replaceState(null, '', `#k=${encodeURIComponent(state.pass)}`);
+    }
     drawCloud();
     toast(t('savedOnline'), 6000);
   } catch (e) {
@@ -1192,6 +1268,23 @@ function wireStatic() {
   $('#btnKeys').onclick = openKeys;
   $('#keyAddForm').addEventListener('submit', onAddKey);
   $('#keysDone').onclick = () => $('#keysDialog').close();
+  $('#btnRotate').onclick = openRotate;
+  $('#rotateCancel').onclick = () => $('#rotateDialog').close();
+  $('#rotateApply').onclick = applyRotate;
+  $('#rotateCopy').onclick = async () => {
+    const text = rotateLinks();
+    try { await navigator.clipboard.writeText(text); } catch { rotateError(t('rotateCopyFailed')); return; }
+    rotateError('');
+    rotateKept = text;
+    drawRotate();
+    $('#rotateCopy').textContent = `✓ ${t('rotateCopy')}`;
+  };
+  $('#rotateDownload').onclick = () => {
+    const text = rotateLinks();
+    download('family-links.txt', text, 'text/plain');
+    rotateKept = text;
+    drawRotate();
+  };
   $('#btnExport').onclick = () => download('family.json', JSON.stringify(state.fam.toJSON(), null, 2));
   $('#btnShare').onclick = copyShareLink;
   $('#btnLock').onclick = () => {

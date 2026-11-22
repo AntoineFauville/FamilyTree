@@ -98,6 +98,31 @@ export async function openFile(file, key) {
   return { vault: { raw, slots: file.keys.map((s) => ({ ...s })) }, data: JSON.parse(dec.decode(pt)), slotId: id };
 }
 
+// Does this code open any of the vault's locks?
+export async function keyOpens(vault, key) {
+  const norm = normalizeKey(key);
+  try { await Promise.any(vault.slots.map((s) => tryUnwrap(s, norm))); return true; } catch { return false; }
+}
+
+// A long random code, e.g. "k7mp-2xqd-9rfw" (about 59 bits; no look-alike letters).
+export function randomCode() {
+  const abc = 'abcdefghjkmnpqrstuvwxyz23456789'; // 31 characters
+  let out = '';
+  while (out.length < 12) {
+    for (const b of random(16)) if (b < 248 && out.length < 12) out += abc[b % 31]; // 248 = 8 * 31: no bias
+  }
+  return out.match(/.{4}/g).join('-');
+}
+
+// A brand-new data key locked with new codes: the old codes can't open anything saved with it.
+// entries: [{ id: old slot id, code }]. Returns { vault, ids: { old id: new id } }.
+export async function rotateVault(entries) {
+  const vault = createVault();
+  const ids = {};
+  for (const { id, code } of entries) ids[id] = await addKey(vault, code);
+  return { vault, ids };
+}
+
 // Small extra data locked with the tree's own data key (see data/setup.enc.json).
 export async function sealBox(vault, obj) {
   const iv = random(12);
