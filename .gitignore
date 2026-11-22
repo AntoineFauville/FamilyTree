@@ -3,6 +3,7 @@ family.json
 *.plain.json
 data/*.json
 !data/family.enc.json
+!data/setup.enc.json
 
 .DS_Store
 Thumbs.db

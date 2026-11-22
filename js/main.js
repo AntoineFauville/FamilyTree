@@ -1,7 +1,7 @@
 import { t, tFirst, setLangs, getLang, getLangs, UI_LANGS } from './i18n.js';
 import { Family, cardNames, displayName, familyGroups, familyKey, familyHead, problemsOf, isEmptyPerson } from './model.js';
 import { yearsLabel, nextBirthday, formatDayMonth, age } from './dates.js';
-import { openFile, sealFile, createVault, addKey, removeKey, isEncryptedFile, MIN_KEY_LENGTH } from './crypto.js';
+import { openFile, sealFile, openBox, createVault, addKey, removeKey, isEncryptedFile, MIN_KEY_LENGTH } from './crypto.js';
 import { buildDescendants, layoutTree, cardHeight, CARD_W } from './layout.js';
 import { createTreeView } from './render.js';
 import { renderDetails } from './details.js';
@@ -12,11 +12,14 @@ const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
 const SETTINGS_KEY = 'familytree.settings';
 const DATA_URL = 'data/family.enc.json';
+const SETUP_URL = 'data/setup.enc.json';
 const MAX_GENERATIONS = 12;
 
 const state = {
   fam: null,
   encFile: null,     // encrypted file waiting for a key
+  setup: null,       // extra codes and starting views waiting to be merged into the tree (encrypted)
+  setupApplied: [],  // ids of setups already saved inside the tree
   vault: null,       // data key + locked copies of it, one per access key (memory only)
   keyLabels: {},     // slot id -> name ("Beridze side"); saved inside the encrypted data
   keyRoles: {},      // slot id -> 'viewer' | 'editor'; saved inside the encrypted data
@@ -52,6 +55,7 @@ function loadSettings() {
     // Older versions had a "root" person and ancestors/descendants modes.
     if (saved.root && !saved.person) state.s.person = saved.root;
     // Names are no longer written in English: English names on becomes French names on.
+    state.s.views = undefined; // replaced by lastViews: it also remembered views nobody had chosen
     if (state.s.langs.en) state.s.langs.fr = true;
     state.s.langs = { fr: !!state.s.langs.fr, ka: !!state.s.langs.ka };
     state.s.root = state.s.mode = state.s.gens = undefined;
@@ -89,6 +93,37 @@ function showPassForm() {
   $('#passInput').focus();
 }
 
+// The link can carry a view: #k=code&p=person&h=tree start (both are anonymous ids).
+function viewFromHash() {
+  const q = new URLSearchParams(location.hash.slice(1));
+  const person = q.get('p');
+  return person ? { person, head: q.get('h') || null } : null;
+}
+
+// Opens the tree, adding the codes and starting views of data/setup.enc.json.
+// Once an editor has saved the tree, they are part of it and the setup is ignored
+// (so removing a code in Access codes really removes it).
+async function openWithSetup(file, pass) {
+  const setup = state.setup;
+  if (!setup || !Array.isArray(file.keys)) return openFile(file, pass);
+  const own = new Set(file.keys.map((k) => k.id));
+  const extra = setup.keys.filter((k) => !own.has(k.id));
+  const opened = await openFile({ ...file, keys: [...file.keys, ...extra] }, pass);
+  const { vault, data } = opened;
+  let box = null;
+  if (!(data.setupApplied || []).includes(setup.id)) {
+    try { box = await openBox(vault, setup); } catch { /* setup of another tree */ }
+  }
+  if (!box) {
+    if (!own.has(opened.slotId)) throw new Error('removed code');
+    vault.slots = vault.slots.filter((k) => own.has(k.id));
+    return opened;
+  }
+  for (const part of ['keyLabels', 'keyRoles', 'keyStarts']) data[part] = { ...(box[part] || {}), ...(data[part] || {}) };
+  data.setupApplied = [...(data.setupApplied || []), setup.id];
+  return opened;
+}
+
 async function tryUnlock(pass) {
   $('#passError').hidden = true;
   if (!state.encFile) {
@@ -98,7 +133,7 @@ async function tryUnlock(pass) {
   }
   $('#passBusy').hidden = false;
   try {
-    const { vault, data, slotId } = await openFile(state.encFile, pass);
+    const { vault, data, slotId } = await openWithSetup(state.encFile, pass);
     openFamily(data, { vault, slotId, pass });
   } catch {
     $('#passError').textContent = t('wrongPass');
@@ -142,6 +177,11 @@ async function boot() {
     } catch { /* no file yet */ }
   }
 
+  try {
+    const r = await fetch(SETUP_URL, { cache: 'no-store' });
+    if (r.ok) state.setup = await r.json();
+  } catch { /* no setup file */ }
+
   if (isEncryptedFile(file)) {
     state.encFile = file;
     showPassForm();
@@ -158,8 +198,9 @@ function openFamily(data, { vault = null, slotId = null, pass = null, demo = fal
   state.vault = vault || createVault();
   state.keyLabels = { ...(data.keyLabels || {}) };
   state.keyRoles = { ...(data.keyRoles || {}) };
-  // slot id -> { person, head }: where that code's link opens (e.g. Gugava -> Tamar, from Jokia).
+  // slot id -> { person, head }: where that code's link opens.
   state.keyStarts = { ...(data.keyStarts || {}) };
+  state.setupApplied = [...(data.setupApplied || [])];
   state.known = slotId ? { [slotId]: pass } : {};
   state.pass = pass;
   state.demo = demo;
@@ -183,9 +224,14 @@ function openFamily(data, { vault = null, slotId = null, pass = null, demo = fal
   } else {
     state.startView = { person: fam.people[0]?.id || null, head: null };
   }
-  // This browser remembers the last view for each link, so people come back where they left off.
-  state.viewKey = slotId || 'file';
-  const last = (s.views || {})[state.viewKey];
+  // A shared link can carry its own view; it wins over the code's starting view.
+  const linked = slotId && viewFromHash();
+  if (linked && fam.get(linked.person)) {
+    state.startView = { person: linked.person, head: fam.get(linked.head) ? linked.head : null };
+  }
+  // This browser remembers the last view chosen for each link, so people come back where they left off.
+  state.viewKey = (slotId || 'file') + (linked ? `|${linked.person}|${linked.head || ''}` : '');
+  const last = (s.lastViews || {})[state.viewKey];
   const view = last && fam.get(last.person) ? { person: last.person, head: fam.get(last.head) ? last.head : null } : state.startView;
   s.person = view.person;
   s.head = view.head;
@@ -260,8 +306,16 @@ function drawPerspective() {
 function refresh({ fit = false } = {}) {
   const { s } = state;
   ensureView();
-  // Remember this link's current view in this browser (only the two ids, no names).
-  if (state.viewKey && s.person) s.views = { ...(s.views || {}), [state.viewKey]: { person: s.person, head: s.head } };
+  // Remember this link's view in this browser (only the two ids, no names), but only once the
+  // visitor has moved away from the starting view: otherwise they follow the starting view.
+  if (state.viewKey && s.person) {
+    const views = { ...(s.lastViews || {}) };
+    const st = state.startView || {};
+    const atStart = s.person === st.person && s.head === (st.head || state.fam.defaultHead(s.person));
+    if (atStart) delete views[state.viewKey];
+    else views[state.viewKey] = { person: s.person, head: s.head };
+    s.lastViews = views;
+  }
   saveSettings();
 
   // Sidebar controls
@@ -689,6 +743,7 @@ async function sealCurrent() {
   return sealFile(state.vault, {
     ...state.fam.toJSON(), startPerson: state.s.person, startHead: state.s.head, keyLabels, keyRoles,
     keyStarts: Object.fromEntries(Object.entries(state.keyStarts).filter(([id]) => ids.has(id))),
+    setupApplied: state.setupApplied,
   });
 }
 
@@ -885,7 +940,10 @@ async function openHistory() {
 
 function copyShareLink() {
   if (!state.pass) { toast(t('noPassYet')); openKeys(); return; }
-  copyText(shareLink(state.pass), t('linkCopied'));
+  // The link opens on what is shown now: this person, and the tree from this ancestor.
+  const { person, head } = state.s;
+  const view = person ? `&p=${encodeURIComponent(person)}${head ? `&h=${encodeURIComponent(head)}` : ''}` : '';
+  copyText(shareLink(state.pass) + view, t(state.canEdit ? 'linkCopiedEditor' : 'linkCopiedView'));
 }
 
 // ---------------------------------------------------------------- Wiring
@@ -927,7 +985,7 @@ function syncLangSegs() {
 
 const PX_TO_MM = 25.4 / 96;
 
-// Letters and digits only, accents removed: "Albert Fauville" -> "AlbertFauville".
+// Letters and digits only, accents removed: "Jean Dupont" -> "JeanDupont".
 const fileWord = (s) => (s || '').normalize('NFD').replace(/\p{M}/gu, '').replace(/[^A-Za-z0-9]/g, '');
 
 function pdfFileName() {
@@ -1160,6 +1218,9 @@ function wireStatic() {
   $$('.tool[data-panel]').forEach((b) => { b.onclick = () => openPanel(b.dataset.panel); });
   $('#stage').addEventListener('pointerdown', closeSidebar);
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSidebar(); });
+
+  // Another family link opened in the same tab only changes the part after #: reload to follow it.
+  window.addEventListener('hashchange', () => location.reload());
 
   window.addEventListener('beforeunload', (e) => {
     if (state.dirty) { e.preventDefault(); e.returnValue = ''; }

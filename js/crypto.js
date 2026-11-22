@@ -98,6 +98,18 @@ export async function openFile(file, key) {
   return { vault: { raw, slots: file.keys.map((s) => ({ ...s })) }, data: JSON.parse(dec.decode(pt)), slotId: id };
 }
 
+// Small extra data locked with the tree's own data key (see data/setup.enc.json).
+export async function sealBox(vault, obj) {
+  const iv = random(12);
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await importDataKey(vault.raw), enc.encode(JSON.stringify(obj))));
+  return { iv: toB64(iv), ct: toB64(ct) };
+}
+
+export async function openBox(vault, box) {
+  const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: fromB64(box.iv) }, await importDataKey(vault.raw), fromB64(box.ct));
+  return JSON.parse(dec.decode(pt));
+}
+
 // Encrypts the data with the vault's data key and attaches every locked copy of it.
 export async function sealFile(vault, data) {
   if (!vault.slots.length) throw new Error('no keys');

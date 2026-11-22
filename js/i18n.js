@@ -4,6 +4,8 @@ export const UI_LANGS = ['en', 'fr', 'ka']; // display order when several are on
 
 const S = {
   en: {
+    linkCopiedView: "Link copied: it opens on the view shown now.",
+    linkCopiedEditor: "Link copied: it opens on the view shown now. Careful: it contains YOUR EDITOR code. For family who only look, open the tree with the view-only code and copy the link from there.",
     middleNames: "Other first names",
     fatherLabel: "Father",
     motherLabel: "Mother",
@@ -184,6 +186,8 @@ const S = {
     startTreeHere: 'Start the tree here',
   },
   fr: {
+    linkCopiedView: "Lien copié : il s’ouvre sur la vue affichée maintenant.",
+    linkCopiedEditor: "Lien copié : il s’ouvre sur la vue affichée maintenant. Attention : il contient VOTRE code éditeur. Pour la famille qui regarde seulement, ouvrez l’arbre avec le code de lecture et copiez le lien depuis là.",
     middleNames: "Autres prénoms",
     fatherLabel: "Père",
     motherLabel: "Mère",
@@ -364,6 +368,8 @@ const S = {
     startTreeHere: 'Commencer l’arbre ici',
   },
   ka: {
+    linkCopiedView: "ბმული დაკოპირდა: ის ახლანდელ ხედზე გაიხსნება.",
+    linkCopiedEditor: "ბმული დაკოპირდა: ის ახლანდელ ხედზე გაიხსნება. ყურადღება: ის შეიცავს თქვენს რედაქტორის კოდს. მხოლოდ სანახავად გახსენით ხე ნახვის კოდით და ბმული იქიდან დააკოპირეთ.",
     middleNames: "სხვა სახელები",
     fatherLabel: "მამა",
     motherLabel: "დედა",

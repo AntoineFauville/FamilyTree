@@ -219,7 +219,7 @@ export class Family {
 
 // Names to show, in the order en / ka / fr, for the enabled languages.
 // Identical names are shown once. Falls back to any name if none of the enabled ones exist.
-// Full name with the other first names: "Antoine Jean Marie Fauville" (for the details panel).
+// Full name with the other first names: "Jean Paul Marie Dupont" (for the details panel).
 export function fullNameLong(p, lang) {
   return [p.first[lang], p.middle[lang], p.last[lang]].map((s) => (s || '').trim()).filter(Boolean).join(' ');
 }
