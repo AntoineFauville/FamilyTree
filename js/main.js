@@ -439,9 +439,22 @@ function circleIds() {
 
 // ---- Birthdays into a calendar app: a .ics file with one yearly all-day event per person.
 
+// People this viewer chose not to see in their birthdays (saved on this device only).
+const bdayHidden = () => new Set(state.s.bdayHidden || []);
+
+function setBdayShown(id, shown) {
+  const hidden = bdayHidden();
+  if (shown) hidden.delete(id); else hidden.add(id);
+  state.s.bdayHidden = [...hidden];
+  saveSettings();
+  drawBirthdays();
+}
+
 function birthdayPeople() {
   const circle = state.s.bdayAll ? null : circleIds();
-  return state.fam.people.filter((p) => (!circle || circle.has(p.id)) && !p.deceased && /^\d{4}-\d{2}-\d{2}$/.test(p.birth));
+  const hidden = bdayHidden();
+  return state.fam.people.filter((p) => (!circle || circle.has(p.id)) && !hidden.has(p.id)
+    && !p.deceased && /^\d{4}-\d{2}-\d{2}$/.test(p.birth));
 }
 
 function makeIcs(people) {
@@ -495,16 +508,23 @@ function drawBirthdays() {
   const person = state.fam.get(state.s.person);
   $('#bdayScopeHint').textContent = everyone || !person ? '' : t('bdayCircleHint', { name: displayName(person, nameOpts()) });
   const circle = everyone ? null : circleIds();
-  const all = state.fam.people
+  const hidden = bdayHidden();
+  const inScope = state.fam.people
     .filter((p) => !circle || circle.has(p.id))
     .map((p) => ({ p, nb: nextBirthday(p, new Date(), { includeDeceased }) }))
     .filter((x) => x.nb)
     .sort((a, b) => a.nb.days - b.nb.days);
+  const all = inScope.filter((x) => !hidden.has(x.p.id));
+  // People hidden by this viewer: a switch lists them again, with a button to bring them back.
+  const hiddenHere = inScope.filter((x) => hidden.has(x.p.id));
+  $('#bdayHiddenRow').hidden = !hiddenHere.length;
+  $('#bdayShowHidden').checked = !!state.showHiddenBdays;
+  $('#bdayHiddenLabel').textContent = t('bdayHiddenToggle', { n: hiddenHere.length });
   // Counter on the toolbar icon: living people with a birthday in the next 7 days.
   const soon = all.filter((x) => x.nb.days <= 7 && !x.p.deceased).length;
   $('#bdayBadge').hidden = !soon;
   $('#bdayBadge').textContent = soon;
-  const items = all.slice(0, 12);
+  const items = state.showHiddenBdays ? [...all.slice(0, 12), ...hiddenHere] : all.slice(0, 12);
   if (!items.length) {
     list.innerHTML = `<li class="muted">${t('noBirthdays')}</li>`;
     return;
@@ -522,7 +542,16 @@ function drawBirthdays() {
     w.className = 'when';
     const age = p.deceased ? t('wouldHaveBeen', { n: nb.turns }) : t('turns', { n: nb.turns });
     w.innerHTML = `${when}<br>${formatDayMonth(nb.date, getLang())} · ${age}`;
-    li.append(name, w);
+    // Hide or bring back, for this viewer only.
+    const isHidden = hidden.has(p.id);
+    li.classList.toggle('bday-hidden', isHidden);
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'bday-toggle';
+    btn.dataset.hide = p.id;
+    btn.textContent = isHidden ? '🔔' : '🔕';
+    btn.title = t(isHidden ? 'bdayShow' : 'bdayHide');
+    li.append(name, w, btn);
     list.appendChild(li);
   }
 }
@@ -534,6 +563,8 @@ const detailsCtx = () => ({
   editMode: state.editMode,
   editing: state.editing,
   select: (id) => select(id),
+  bdayShown: (id) => !bdayHidden().has(id),
+  setBdayShown: (id, shown) => setBdayShown(id, shown),
   // 'head': start the tree from this person; 'person': look from this person.
   perspective: (id, what) => {
     if (what === 'head') setHead(id); else setPerson(id);
@@ -1296,8 +1327,11 @@ function wireStatic() {
   // Birthdays
   $('#bdayDeceased').onchange = (e) => { state.s.bdayDeceased = e.target.checked; saveSettings(); drawBirthdays(); };
   $('#btnCalendar').onclick = exportBirthdays;
+  $('#bdayShowHidden').onchange = (e) => { state.showHiddenBdays = e.target.checked; drawBirthdays(); };
   $('#bdayAll').onchange = (e) => { state.s.bdayAll = e.target.checked; saveSettings(); drawBirthdays(); };
   $('#birthdayList').onclick = (e) => {
+    const hide = e.target.closest('[data-hide]');
+    if (hide) { setBdayShown(hide.dataset.hide, bdayHidden().has(hide.dataset.hide)); return; }
     const li = e.target.closest('li[data-pid]');
     if (li) { closeSidebar(); select(li.dataset.pid); }
   };

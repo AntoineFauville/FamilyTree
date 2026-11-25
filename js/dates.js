@@ -91,6 +91,30 @@ export function age(p, today = new Date()) {
   return a;
 }
 
+// Gap between two birth dates: { y, m, d, approx, firstIsOlder } (y/m/d always positive).
+// Exact with two full dates; with only years it is approximate (years only). null if unknown.
+export function birthGap(a, b) {
+  const p = parseDate(a), q = parseDate(b);
+  if (!p || !q) return null;
+  if (p.m && p.d && q.m && q.d) {
+    const ta = Date.UTC(p.y, p.m - 1, p.d), tb = Date.UTC(q.y, q.m - 1, q.d);
+    const [o, tn] = ta <= tb ? [p, tb] : [q, ta];
+    // Whole months from the older date (a 31st becomes the month's last day when needed),
+    // then the days that are left.
+    const after = (k) => {
+      const y = o.y + Math.floor((o.m - 1 + k) / 12), m0 = (o.m - 1 + k) % 12;
+      return Date.UTC(y, m0, Math.min(o.d, new Date(Date.UTC(y, m0 + 1, 0)).getUTCDate()));
+    };
+    const tOld = Math.min(ta, tb), tNew = Math.max(ta, tb);
+    const n = tOld === ta ? q : p;
+    let k = (n.y - o.y) * 12 + (n.m - o.m);
+    if (after(k) > tn) k--;
+    const d = Math.round((tNew - after(k)) / 86400000);
+    return { y: Math.floor(k / 12), m: k % 12, d, approx: false, firstIsOlder: ta < tb, same: ta === tb };
+  }
+  return { y: Math.abs(q.y - p.y), m: 0, d: 0, approx: true, firstIsOlder: p.y < q.y, same: false };
+}
+
 // How old someone born on `birth` was on `date` (e.g. a parent when their child was born).
 // Exact with two full dates; with only years it is approximate. null if unknown.
 export function ageAtDate(birth, date) {

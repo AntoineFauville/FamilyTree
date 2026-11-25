@@ -1,11 +1,15 @@
-# Once a day, copy the online (encrypted) family tree from Firebase into this repository,
-# as data/family.enc.json. That keeps a second copy, and keeps the website's fallback
-# up to date if Firebase is ever unreachable. The file stays encrypted: no family code here.
+# Once a week, back up the online (encrypted) family tree from Firebase.
+#
+# - A dated copy is kept for 6 weeks as a GitHub "artifact" (Actions tab > a run > Artifacts),
+#   then GitHub deletes it by itself: the backups never make the repository bigger.
+# - The website's fallback copy, data/family.enc.json, is refreshed (one commit, only if the
+#   tree changed), so the site still works if Firebase is ever unreachable.
+# The file stays encrypted: no family code is needed or stored here.
 name: Back up the online family tree
 
 on:
   schedule:
-    - cron: '17 3 * * *'   # every day at 03:17 UTC
+    - cron: '17 3 * * 0'   # every Sunday at 03:17 UTC
   workflow_dispatch:        # can also be started by hand from the Actions tab
 
 permissions:
@@ -18,9 +22,10 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Download the online tree
+        id: download
         run: |
           node --input-type=module -e "
-            import { writeFileSync, readFileSync } from 'node:fs';
+            import { writeFileSync, appendFileSync } from 'node:fs';
             const { firebaseConfig: c } = await import('./js/firebase-config.js');
             if (!c) { console.log('Online editing is not set up; nothing to back up.'); process.exit(0); }
             const url = 'https://firestore.googleapis.com/v1/projects/' + c.projectId
@@ -28,13 +33,23 @@ jobs:
             const r = await fetch(url);
             if (r.status === 404) { console.log('No online tree yet.'); process.exit(0); }
             if (!r.ok) { console.error('Download failed: HTTP ' + r.status); process.exit(1); }
-            const text = (await r.json()).fields.file.stringValue;
-            const file = JSON.parse(text);
+            const file = JSON.parse((await r.json()).fields.file.stringValue);
             if (file.format !== 'familytree-encrypted') { console.error('Not an encrypted family file; not saved.'); process.exit(1); }
             writeFileSync('data/family.enc.json', JSON.stringify(file));
+            appendFileSync(process.env.GITHUB_OUTPUT, 'saved=yes\n');
           "
+          echo "date=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
 
-      - name: Commit if it changed
+      - name: Keep a dated copy for 6 weeks
+        if: steps.download.outputs.saved == 'yes'
+        uses: actions/upload-artifact@v4
+        with:
+          name: family-tree-${{ steps.download.outputs.date }}
+          path: data/family.enc.json
+          retention-days: 42
+
+      - name: Refresh the website's fallback copy if it changed
+        if: steps.download.outputs.saved == 'yes'
         run: |
           if git diff --quiet -- data/family.enc.json; then
             echo "Already up to date."
@@ -42,6 +57,6 @@ jobs:
             git config user.name "family-tree-backup"
             git config user.email "family-tree-backup@users.noreply.github.com"
             git add data/family.enc.json
-            git commit -m "Daily backup of the online family tree"
+            git commit -m "Weekly copy of the online family tree"
             git push
           fi

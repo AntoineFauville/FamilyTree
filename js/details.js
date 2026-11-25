@@ -2,7 +2,7 @@
 
 import { t, getLang, getLangs } from './i18n.js';
 import { nameLines, displayName, fullNameLong, NAME_LANGS, problemsOf } from './model.js';
-import { formatDate, age, ageAtDate, parseUserDate, toUserDate } from './dates.js';
+import { formatDate, age, ageAtDate, birthGap, parseUserDate, toUserDate } from './dates.js';
 
 // "29 March 1994 / 29 მარტი 1994 / 29 mars 1994" in the interface language(s).
 function datePreview(stored) {
@@ -64,6 +64,42 @@ function renderView(box, p, ctx) {
     }).join('')}</div>`;
   };
 
+  // Children: how old this person was when each was born.
+  const childrenBlock = () => {
+    const list = ctx.fam.childrenOf(p.id);
+    if (!list.length) return '';
+    return `<div class="d-rel"><h3>${esc(t('children'))}</h3>${list.map((q) => {
+      const at = ageAtDate(p.birth, q.birth);
+      const ageText = at ? ` · ${at.approx ? '≈ ' : ''}${esc(t('ageAtTheirBirth', { n: at.n }))}` : '';
+      return `<div class="d-parent"><span class="chip" data-go="${q.id}">${esc(nameOf(ctx, q))}</span><span class="muted small">${ageText}</span></div>`;
+    }).join('')}</div>`;
+  };
+
+  // Siblings: older or younger, by how much ("1 an 11 mois 3 jours").
+  const unit = (n, one, many) => (n ? `${n} ${t(n === 1 ? one : many)}` : '');
+  const siblingsBlock = () => {
+    const list = ctx.fam.siblingsOf(p.id);
+    if (!list.length) return '';
+    return `<div class="d-rel"><h3>${esc(t('siblings'))}</h3>${list.map((q) => {
+      const g = birthGap(p.birth, q.birth);
+      let gapText = '';
+      if (g && g.same) gapText = t('sameBirthday');
+      else if (g) {
+        const parts = [unit(g.y, 'yr1', 'yrN'), unit(g.m, 'mo1', 'moN'), unit(g.d, 'dy1', 'dyN')].filter(Boolean).join(' ');
+        const span = (g.approx ? '≈ ' : '') + (parts || unit(1, 'yr1', 'yrN'));
+        gapText = t(g.firstIsOlder ? 'youngerBy' : 'olderBy', { gap: span });
+      }
+      return `<div class="d-parent"><span class="chip" data-go="${q.id}">${esc(nameOf(ctx, q))}</span><span class="muted small">${gapText ? ` · ${esc(gapText)}` : ''}</span></div>`;
+    }).join('')}</div>`;
+  };
+
+  // Personal choice, only on this device: show this person in "my" birthdays or not.
+  const bdayBlock = () => {
+    if (p.deceased || !/^\d{4}-\d{2}-\d{2}$/.test(p.birth) || !ctx.bdayShown) return '';
+    return `<label class="toggle d-bday"><input type="checkbox" data-act="bday" ${ctx.bdayShown(p.id) ? 'checked' : ''}>
+      <span>${esc(t('showInMyBirthdays'))}</span></label><p class="muted small">${esc(t('showInMyBirthdaysHint'))}</p>`;
+  };
+
   // Full names with the other first names, in every language that has one.
   const longNames = [];
   for (const l of NAME_LANGS) {
@@ -85,8 +121,9 @@ function renderView(box, p, ctx) {
     </div>
     ${parentsBlock()}
     ${rel('partners', ctx.fam.partnersOf(p.id))}
-    ${rel('siblings', ctx.fam.siblingsOf(p.id))}
-    ${rel('children', ctx.fam.childrenOf(p.id))}
+    ${siblingsBlock()}
+    ${childrenBlock()}
+    ${bdayBlock()}
     ${p.notes ? `<div class="d-rel"><h3>${esc(t('notes'))}</h3><div class="d-notes">${esc(p.notes)}</div></div>` : ''}
   `;
 
@@ -94,6 +131,7 @@ function renderView(box, p, ctx) {
     const go = e.target.closest('[data-go]');
     if (go) return ctx.select(go.dataset.go);
     const act = e.target.closest('[data-act]')?.dataset.act;
+    if (act === 'bday') { ctx.setBdayShown(p.id, e.target.checked); return; }
     if (act === 'close') ctx.close();
     if (act === 'person') ctx.perspective(p.id, 'person');
     if (act === 'head') ctx.perspective(p.id, 'head');

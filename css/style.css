@@ -305,3 +305,10 @@ dialog h2 { font-size: 16px; text-transform: none; letter-spacing: 0; color: var
 
 /* Replace all codes: one editable code per link */
 #rotateList input { flex: 1 1 100%; margin: 0; font-family: ui-monospace, Consolas, monospace; }
+
+/* Birthdays: per-viewer hide / bring back */
+.bday-list li { position: relative; padding-right: 34px; }
+.bday-toggle { position: absolute; right: 2px; top: 4px; border: 0; background: none; padding: 2px 4px; font-size: 15px; opacity: .55; }
+.bday-toggle:hover { opacity: 1; background: none; }
+.bday-list li.bday-hidden { opacity: .55; }
+.d-bday { margin-top: 10px; }
