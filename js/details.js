@@ -42,14 +42,18 @@ function renderView(box, p, ctx) {
     dates += `<div>${esc(t('deceased'))}</div>`;
   }
 
+  // Partners with the kind of couple: "époux", "compagne", "ex-épouse"... (★ = current one).
+  const coupleWord = (q) => {
+    const type = ctx.fam.partnerType(p.id, q.id);
+    const g = q.gender === 'm' ? 'M' : q.gender === 'f' ? 'F' : '';
+    return t(type + g);
+  };
   const rel = (key, list) => list.length ? `
-    <div class="d-rel"><h3>${esc(t(key))}</h3><div class="chips">
-      ${list.map((q) => {
-        // Several partners: ★ before the current one.
-        const star = key === 'partners' && list.length > 1 && p.currentPartner === q.id ? '★ ' : '';
-        return `<span class="chip" data-go="${q.id}" ${star ? `title="${esc(t('currentPartner'))}"` : ''}>${star}${esc(nameOf(ctx, q))}</span>`;
-      }).join('')}
-    </div></div>` : '';
+    <div class="d-rel"><h3>${esc(t(key))}</h3>${list.map((q) => {
+      const star = list.length > 1 && p.currentPartner === q.id ? '★ ' : '';
+      return `<div class="d-parent"><span class="chip" data-go="${q.id}" ${star ? `title="${esc(t('currentPartner'))}"` : ''}>${star}${esc(nameOf(ctx, q))}</span>
+        <span class="muted small"> · ${esc(coupleWord(q))}</span></div>`;
+    }).join('')}</div>` : '';
 
   // Parents as "Father: … · 32 at the birth" / "Mother: … · 28 at the birth".
   const parentsBlock = () => {
@@ -160,6 +164,10 @@ function renderForm(box, p, ctx) {
               ? `<button class="star" data-current="${q.id}" title="${esc(t('currentPartner'))}">${p.currentPartner === q.id ? '★' : '☆'}</button>`
               : ''}${esc(nameOf(ctx, q))}<button class="x" data-unlink="${kind}" data-id="${q.id}" title="${esc(t('remove'))}">×</button></span>`).join('')}
         </div>
+        ${kind === 'partners' ? list.map((q) => `<label class="field couple-type"><span>${esc(nameOf(ctx, q))}</span>
+          <select data-ptype="${q.id}">${['married', 'companion', 'former'].map((ty) =>
+            `<option value="${ty}" ${fam.partnerType(p.id, q.id) === ty ? 'selected' : ''}>${esc(t('opt' + ty[0].toUpperCase() + ty.slice(1)))}</option>`).join('')}
+          </select></label>`).join('') : ''}
         ${kind === 'partners' && list.length > 1 ? `<p class="muted small">${esc(t('currentPartnerHint'))}</p>` : ''}
         ${canAdd ? `<select data-link="${kind}">
           <option value="">${esc(t('addLink'))}</option>
@@ -249,6 +257,7 @@ function renderForm(box, p, ctx) {
 
   box.onchange = (e) => {
     const tg = e.target;
+    if (tg.dataset.ptype) { fam.setPartnerType(p.id, tg.dataset.ptype, tg.value); ctx.changed(); renderDetails(box, ctx); return; }
     if (tg.dataset.field === 'gender') { p.gender = tg.value; ctx.changed(); }
     else if (tg.dataset.field === 'deceased') { p.deceased = tg.checked; ctx.changed({ soft: true }); }
     else if (tg.dataset.link) {

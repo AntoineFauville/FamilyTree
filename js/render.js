@@ -79,7 +79,10 @@ export function createTreeView(svg, { onSelect }) {
     bounds = layout.bounds;
 
     edgesG.replaceChildren();
-    for (const e of layout.edges) el('path', { d: e.d, class: `edge ${e.cls}` }, edgesG);
+    for (const e of layout.edges) {
+      if (e.text) el('text', { x: e.x, y: e.y, class: `edge-${e.cls}` }, edgesG).textContent = e.text;
+      else el('path', { d: e.d, class: `edge ${e.cls}` }, edgesG);
+    }
     // Restart the fade-in so lines appear after the cards have moved.
     edgesG.classList.remove('fade-in');
     edgesG.getBoundingClientRect();

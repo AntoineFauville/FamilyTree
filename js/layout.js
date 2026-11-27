@@ -21,20 +21,23 @@ export function cardHeight() {
 // partners (e.g. a grandmother's second husband) come right after that partner.
 // rel[i] says who card i is joined to: { of: index of the card it is joined to,
 // order: which of the main person's partners it is (-1 for a partner's partner) }.
-export function buildDescendants(fam, rootId, maxGen) {
+// opts.hideLoose: leave out companions and former partners who had no child with that person
+// (a per-device choice); partners with a child together always stay, they are part of the genealogy.
+export function buildDescendants(fam, rootId, maxGen, opts = {}) {
+  const loose = (a, b) => opts.hideLoose && fam.partnerType(a, b) !== 'married' && !fam.haveChild(a, b);
   const seen = new Set();
   const build = (id, depth) => {
     seen.add(id);
     const people = [id];
     const rel = [null];
-    fam.partnersOf(id).forEach((q, k) => { // current partner first
+    fam.partnersOf(id).filter((q) => !loose(id, q.id)).forEach((q, k) => { // married first
       const qi = people.length;
       people.push(q.id);
-      rel.push({ of: 0, order: k });
+      rel.push({ of: 0, order: k, type: fam.partnerType(id, q.id) });
       for (const r of fam.partnersOf(q.id)) {
-        if (r.id === id || people.includes(r.id) || seen.has(r.id)) continue;
+        if (r.id === id || people.includes(r.id) || seen.has(r.id) || loose(q.id, r.id)) continue;
         people.push(r.id);
-        rel.push({ of: qi, order: -1 });
+        rel.push({ of: qi, order: -1, type: fam.partnerType(q.id, r.id) });
       }
     });
     const node = { people, rel, children: [], depth };
@@ -68,7 +71,8 @@ export function buildDescendants(fam, rootId, maxGen) {
   return fam.get(rootId) ? build(rootId, 0) : null;
 }
 
-const LINE_STYLES = ['solid', 'dash', 'dot', 'dashdot'];
+// Line style of a couple: married solid (with ⚭), companion dotted, former partners dashed.
+const TYPE_STYLE = { married: 'solid', companion: 'dot', former: 'dash' };
 const PARTNER_LINE_GAP = 8; // vertical space between stacked partner lines
 // Someone with several partners gets wider gaps between the cards,
 // so the stacked partner lines can be seen clearly.
@@ -118,16 +122,13 @@ export function layoutTree(root, cardH) {
     n.ux = ux;
     const y = n.y;
 
-    // The main person's partners: with several, each couple gets its own line style
-    // (solid, dashed, dotted...) for the line joining them and the lines to their children.
-    // Each line starts at the main person and runs (behind the cards in between) to that
-    // partner; the lines are stacked a few pixels apart so they can be told apart.
+    // Each couple's line shows its kind: married solid (with ⚭), companion dotted, former
+    // partners dashed; the lines to their children use the same style. Each line starts at
+    // the main person and runs (behind the cards in between) to that partner; with several
+    // partners the lines are stacked a few pixels apart so they can be told apart.
     const mainPartners = n.rel.filter((r) => r && r.of === 0).length;
     const stacked = mainPartners > 1;
-    const styleOf = (i) => {
-      const r = n.rel[i];
-      return r && r.of === 0 && stacked ? LINE_STYLES[r.order % LINE_STYLES.length] : 'solid';
-    };
+    const styleOf = (i) => TYPE_STYLE[(n.rel[i] && n.rel[i].type) || 'married'] || 'solid';
     const lineY = (i) => {
       const r = n.rel[i];
       if (!stacked || !r) return y + cardH / 2;
@@ -141,6 +142,10 @@ export function layoutTree(root, cardH) {
       if (i > 0) {
         const from = n.rel[i] ? n.rel[i].of : 0;
         edges.push({ cls: `partner ${styleOf(i)}`, d: `M${ux + from * STEP + CARD_W},${lineY(i)}H${ux + i * STEP}` });
+        // ⚭ (married) just above the line, in the gap before that partner's card.
+        if ((n.rel[i] && n.rel[i].type) === 'married') {
+          edges.push({ cls: 'mark', x: ux + i * STEP - gapOf(n) / 2, y: lineY(i) - 3, text: '⚭' });
+        }
       }
     });
 
@@ -154,7 +159,7 @@ export function layoutTree(root, cardH) {
       // than the previous one, so the lines don't run on top of each other.
       const offset = n.people.length > 2 ? Math.min(24, j > 0 ? (j - 1) * 8 : -8) : 0;
       const midY = y + cardH + LEVEL_GAP / 2 + offset;
-      edges.push({ cls: `child ${styleOf(j)}`, d: `M${ax},${ay}V${midY}H${c.ux + CARD_W / 2}V${c.y}` });
+      edges.push({ cls: `child ${j > 0 ? styleOf(j) : 'solid'}`, d: `M${ax},${ay}V${midY}H${c.ux + CARD_W / 2}V${c.y}` });
     }
   };
   place(root, 0);

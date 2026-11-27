@@ -323,6 +323,7 @@ function refresh({ fit = false } = {}) {
   // Sidebar controls
   drawPerspective();
   $$('[data-name-lang]').forEach((c) => { c.checked = !!s.langs[c.dataset.nameLang]; });
+  $('#showLoose').checked = s.showLoose !== false;
   $('#editSection').hidden = !state.canEdit;
   $('#toolEdit').hidden = !state.canEdit;
   drawCloud();
@@ -374,7 +375,7 @@ function drawTree(fit) {
   const langs = nameOpts();
   const cardH = cardHeight();
   // Everyone descending from the chosen ancestor, each shown with their partner(s).
-  const layout = layoutTree(buildDescendants(fam, s.head, MAX_GENERATIONS), cardH);
+  const layout = layoutTree(buildDescendants(fam, s.head, MAX_GENERATIONS, { hideLoose: s.showLoose === false }), cardH);
   // The direct line from that ancestor down to the person gets highlighted.
   const line = new Set([s.head, s.person].filter(Boolean));
   for (const a of fam.ancestorsOf(s.person)) {
@@ -1327,6 +1328,8 @@ function wireStatic() {
   // Birthdays
   $('#bdayDeceased').onchange = (e) => { state.s.bdayDeceased = e.target.checked; saveSettings(); drawBirthdays(); };
   $('#btnCalendar').onclick = exportBirthdays;
+  // Show companions and exes who had no children together (per device, on by default).
+  $('#showLoose').onchange = (e) => { state.s.showLoose = e.target.checked; refresh({ fit: true }); };
   $('#bdayShowHidden').onchange = (e) => { state.showHiddenBdays = e.target.checked; drawBirthdays(); };
   $('#bdayAll').onchange = (e) => { state.s.bdayAll = e.target.checked; saveSettings(); drawBirthdays(); };
   $('#birthdayList').onclick = (e) => {

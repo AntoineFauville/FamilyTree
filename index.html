@@ -17,25 +17,25 @@
   <!-- Version number on every app file: when it changes, browsers fetch the new files
        instead of a saved older copy. Bump APP VERSION (all "?v=" below) on every app change;
        bump-version.ps1 does it. The family data file is always fetched fresh anyway. -->
-  <link rel="stylesheet" href="css/style.css?v=31">
+  <link rel="stylesheet" href="css/style.css?v=32">
   <script type="importmap">
   {
     "imports": {
-      "./js/main.js": "./js/main.js?v=31",
-      "./js/i18n.js": "./js/i18n.js?v=31",
-      "./js/model.js": "./js/model.js?v=31",
-      "./js/dates.js": "./js/dates.js?v=31",
-      "./js/crypto.js": "./js/crypto.js?v=31",
-      "./js/layout.js": "./js/layout.js?v=31",
-      "./js/render.js": "./js/render.js?v=31",
-      "./js/details.js": "./js/details.js?v=31",
-      "./js/sample.js": "./js/sample.js?v=31",
-      "./js/cloud.js": "./js/cloud.js?v=31",
-      "./js/firebase-config.js": "./js/firebase-config.js?v=31"
+      "./js/main.js": "./js/main.js?v=32",
+      "./js/i18n.js": "./js/i18n.js?v=32",
+      "./js/model.js": "./js/model.js?v=32",
+      "./js/dates.js": "./js/dates.js?v=32",
+      "./js/crypto.js": "./js/crypto.js?v=32",
+      "./js/layout.js": "./js/layout.js?v=32",
+      "./js/render.js": "./js/render.js?v=32",
+      "./js/details.js": "./js/details.js?v=32",
+      "./js/sample.js": "./js/sample.js?v=32",
+      "./js/cloud.js": "./js/cloud.js?v=32",
+      "./js/firebase-config.js": "./js/firebase-config.js?v=32"
     }
   }
   </script>
-  <script type="module" src="js/main.js?v=31"></script>
+  <script type="module" src="js/main.js?v=32"></script>
 </head>
 <body>
 
@@ -141,6 +141,9 @@
       <h2 data-i18n="namesIn"></h2>
       <label class="toggle"><input type="checkbox" data-name-lang="fr"><span data-i18n="langFr"></span></label>
       <label class="toggle"><input type="checkbox" data-name-lang="ka"><span data-i18n="langKa"></span></label>
+      <h2 data-i18n="couplesTitle"></h2>
+      <label class="toggle"><input type="checkbox" id="showLoose"><span data-i18n="showLoose"></span></label>
+      <p class="muted small" data-i18n="showLooseHint"></p>
       <h2 data-i18n="uiLanguage"></h2>
       <div class="seg" data-ui-lang-seg>
         <button type="button" data-lang="en">English</button>

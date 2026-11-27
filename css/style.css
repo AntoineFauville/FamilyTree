@@ -312,3 +312,9 @@ dialog h2 { font-size: 16px; text-transform: none; letter-spacing: 0; color: var
 .bday-toggle:hover { opacity: 1; background: none; }
 .bday-list li.bday-hidden { opacity: .55; }
 .d-bday { margin-top: 10px; }
+
+/* Kind of couple: ⚭ above the line of a married couple; type selector in the edit form */
+.edge-mark { font-size: 11px; text-anchor: middle; fill: var(--muted); }
+.couple-type { flex-direction: row; align-items: center; gap: 8px; margin: 6px 0 0; }
+.couple-type span { flex: 1; min-width: 0; }
+.couple-type select { width: auto; font-size: 13px; padding: 4px 6px; }

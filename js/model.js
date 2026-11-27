@@ -8,6 +8,7 @@
 import { compareBirth } from './dates.js';
 
 export const NAME_LANGS = ['fr', 'ka'];
+export const COUPLE_TYPES = ['married', 'companion', 'former'];
 
 export function newId() {
   const b = crypto.getRandomValues(new Uint8Array(5));
@@ -51,6 +52,8 @@ export function normalizePerson(p) {
     partners: Array.isArray(p.partners) ? [...new Set(p.partners)] : [],
     // With several partners: the one they are with now (shown next to them, solid line).
     currentPartner: p.currentPartner || '',
+    // Kind of each couple: partner id -> 'married' | 'companion' | 'former' (missing = married).
+    partnerTypes: p.partnerTypes && typeof p.partnerTypes === 'object' ? { ...p.partnerTypes } : {},
   };
 }
 
@@ -69,8 +72,31 @@ export class Family {
       for (const q of p.partners) {
         const other = this.map.get(q);
         if (!other.partners.includes(p.id)) other.partners.push(p.id);
+        // A couple has one type, the same seen from both sides.
+        const type = p.partnerTypes[q] || other.partnerTypes[p.id];
+        if (type) { p.partnerTypes[q] = type; other.partnerTypes[p.id] = type; }
       }
     }
+    for (const p of people) {
+      for (const id of Object.keys(p.partnerTypes)) {
+        if (!p.partners.includes(id) || !COUPLE_TYPES.includes(p.partnerTypes[id])) delete p.partnerTypes[id];
+      }
+    }
+  }
+
+  // 'married' (the default), 'companion' (together, not married) or 'former' (divorced / separated).
+  partnerType(a, b) {
+    return (this.get(a)?.partnerTypes || {})[b] || 'married';
+  }
+  setPartnerType(a, b, type) {
+    const pa = this.get(a), pb = this.get(b);
+    if (!pa || !pb || !COUPLE_TYPES.includes(type)) return;
+    pa.partnerTypes[b] = type;
+    pb.partnerTypes[a] = type;
+  }
+  // Did these two have a child together?
+  haveChild(a, b) {
+    return this.people.some((k) => k.parents.includes(a) && k.parents.includes(b));
   }
 
   reindex() { this.map = new Map(this.data.people.map((p) => [p.id, p])); }
@@ -90,8 +116,10 @@ export class Family {
   partnersOf(id) {
     const p = this.get(id);
     if (!p) return [];
+    // Married first (genealogy), then companions, then former partners; the current one first within each.
+    const rank = (q) => COUPLE_TYPES.indexOf(this.partnerType(id, q.id)) * 2 + (q.id === p.currentPartner ? 0 : 1);
     const list = p.partners.map((x) => this.get(x)).filter(Boolean);
-    return list.sort((a, b) => (b.id === p.currentPartner) - (a.id === p.currentPartner));
+    return list.map((q, i) => ({ q, i })).sort((a, b) => rank(a.q) - rank(b.q) || a.i - b.i).map((x) => x.q);
   }
 
   // Mark (or unmark, with null) someone's current partner; it is mutual.
@@ -129,6 +157,7 @@ export class Family {
       p.parents = p.parents.filter((x) => x !== id);
       p.partners = p.partners.filter((x) => x !== id);
       if (p.currentPartner === id) p.currentPartner = '';
+      delete p.partnerTypes[id];
     }
     this.reindex();
   }
@@ -212,6 +241,8 @@ export class Family {
     if (pb) pb.partners = pb.partners.filter((x) => x !== a);
     if (pa && pa.currentPartner === b) pa.currentPartner = '';
     if (pb && pb.currentPartner === a) pb.currentPartner = '';
+    if (pa) delete pa.partnerTypes[b];
+    if (pb) delete pb.partnerTypes[a];
   }
 
   toJSON() { return this.data; }
